@@ -1,6 +1,6 @@
 # daichod
 
-[![CI](https://github.com/kiyoya/daichod/actions/workflows/ci.yml/badge.svg)](https://github.com/kiyoya/daichod/actions/workflows/ci.yml)
+[![CI](https://github.com/kiyoya/daichod/actions/workflows/ci.yml/badge.svg)](https://github.com/kiyoya/daichod/actions/workflows/ci.yml) [![Publish](https://github.com/kiyoya/daichod/actions/workflows/publish.yml/badge.svg)](https://github.com/kiyoya/daichod/actions/workflows/publish.yml)
 
 The engine boundary of Daicho. One process, one book, one engine thread — deliberately too small to be wrong. GPL-3.0-or-later; the protobuf contract in `proto/` is Apache-2.0.
 
