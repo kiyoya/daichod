@@ -11,24 +11,6 @@ A small C++ daemon that links libgnucash and serves a gRPC contract over a Unix 
 
 **Code style:** C++ follows the [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html); protocol buffers follow the [Protobuf Style Guide](https://protobuf.dev/programming-guides/style/).
 
-## Building
-
-The only supported build environment is a container (no distro ships libgnucash
-headers; the image compiles the pinned GnuCash from source). The `Containerfile`
-is engine-agnostic — use wslc, docker, or podman interchangeably:
-
-```sh
-# Development image (toolchain + GnuCash under /opt/gnucash):
-<engine> build --target dev -t daichod-dev .
-
-# Configure, build, and test with the repo bind-mounted. ccache warms
-# .ccache/ in the repo across runs; tests are isolated and run in parallel:
-<engine> run --rm -v .:/src daichod-dev cmake -S /src -B /src/build -G Ninja
-<engine> run --rm -v .:/src daichod-dev cmake --build /src/build
-<engine> run --rm -v .:/src daichod-dev ctest --test-dir /src/build/test -j "$(nproc)" --output-on-failure
-
-# Deliverable runtime image:
-<engine> build --target runtime -t daichod .
-```
+**Building and testing:** container-only, engine-agnostic (wslc, docker, or podman). See [BUILDING.md](BUILDING.md); coding agents should also read [AGENTS.md](AGENTS.md).
 
 **License:** GPL-3.0-or-later ([LICENSE](LICENSE)), matching the linked libgnucash. `proto/` is Apache-2.0 so clients can generate stubs without inheriting the GPL.
