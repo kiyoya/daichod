@@ -51,6 +51,11 @@ class Session {
   QofBook* book() const;
   ::Account* root_account() const;
 
+  // Startup integrity gate: every transaction balances in its currency and
+  // the per-currency trial balance is zero. Detection only — the shim never
+  // repairs a book; a failed check throws and the daemon exits nonzero.
+  void RunStartupChecks() const;
+
   const Config& config() const { return config_; }
 
  private:

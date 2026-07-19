@@ -154,6 +154,45 @@ QofBook* Session::book() const {
 ::Account* Session::root_account() const {
   return gnc_book_get_root_account(book());
 }
+void Session::RunStartupChecks() const {
+  QofBook* current_book = book();
+  QofQuery* query = qof_query_create_for(GNC_ID_SPLIT);
+  qof_query_set_book(query, current_book);
+
+  std::string imbalanced_txn;
+  std::map<std::string, gnc_numeric> sums;
+  for (GList* node = qof_query_run(query); node != nullptr;
+       node = node->next) {
+    auto* split = static_cast<::Split*>(node->data);
+    ::Transaction* transaction = xaccSplitGetParent(split);
+    if (imbalanced_txn.empty() &&
+        !gnc_numeric_zero_p(xaccTransGetImbalanceValue(transaction))) {
+      imbalanced_txn = GuidToString(qof_instance_get_guid(transaction));
+    }
+    const gnc_commodity* currency = xaccTransGetCurrency(transaction);
+    if (currency == nullptr) continue;
+    const std::string key =
+        std::string(gnc_commodity_get_namespace(currency)) + ":" +
+        gnc_commodity_get_mnemonic(currency);
+    const auto [it, inserted] = sums.try_emplace(key, gnc_numeric_zero());
+    it->second = gnc_numeric_add(it->second, xaccSplitGetValue(split),
+                                 GNC_DENOM_AUTO, GNC_HOW_DENOM_LCD);
+  }
+  qof_query_destroy(query);
+
+  if (!imbalanced_txn.empty()) {
+    throw ShimError(shim::ENGINE_ERROR,
+                    "startup check failed: imbalanced transaction",
+                    imbalanced_txn);
+  }
+  for (const auto& [currency, sum] : sums) {
+    if (!gnc_numeric_zero_p(sum)) {
+      throw ShimError(shim::ENGINE_ERROR,
+                      "startup check failed: trial balance is nonzero",
+                      currency);
+    }
+  }
+}
 
 
 }  // namespace daichod

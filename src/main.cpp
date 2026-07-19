@@ -18,10 +18,12 @@
 #include "engine/session.h"
 #include "engine/worker.h"
 #include "journal/journal.h"
+#include "journal/recovery.h"
 #include "rpc/account_service.h"
 #include "rpc/commodity_service.h"
 #include "rpc/session_service.h"
 #include "rpc/transaction_service.h"
+#include "util/backup.h"
 
 namespace daichod {
 namespace {
@@ -30,8 +32,18 @@ struct Options {
   std::string book_uri;
   std::string socket_path;
   std::string journal_path;
+  std::string backup_dir;
+  int backup_keep_days = 14;
   bool read_only = false;
   std::size_t queue_depth = 256;
+
+  // Local filesystem path for sqlite3:// books; empty otherwise.
+  std::string book_path() const {
+    static constexpr char kPrefix[] = "sqlite3://";
+    return book_uri.rfind(kPrefix, 0) == 0
+               ? book_uri.substr(sizeof(kPrefix) - 1)
+               : std::string();
+  }
 };
 
 // Startup failures must be machine-readable: one JSON object on stderr,
@@ -47,6 +59,8 @@ Options ParseOptions(int argc, char** argv) {
       {"book-uri", required_argument, nullptr, 'b'},
       {"socket", required_argument, nullptr, 's'},
       {"journal", required_argument, nullptr, 'j'},
+      {"backup-dir", required_argument, nullptr, 'B'},
+      {"backup-keep-days", required_argument, nullptr, 'K'},
       {"read-only", no_argument, nullptr, 'r'},
       {"queue-depth", required_argument, nullptr, 'q'},
       {"version", no_argument, nullptr, 'v'},
@@ -64,6 +78,12 @@ Options ParseOptions(int argc, char** argv) {
         break;
       case 'j':
         options.journal_path = optarg;
+        break;
+      case 'B':
+        options.backup_dir = optarg;
+        break;
+      case 'K':
+        options.backup_keep_days = std::stoi(optarg);
         break;
       case 'r':
         options.read_only = true;
@@ -90,14 +110,16 @@ Options ParseOptions(int argc, char** argv) {
   if (options.journal_path.empty()) {
     // The design's default: a sidecar next to the book. Only file-backed
     // books have a "next to"; anything else must say where explicitly.
-    static constexpr char kSqlitePrefix[] = "sqlite3://";
-    if (options.book_uri.rfind(kSqlitePrefix, 0) == 0) {
-      options.journal_path =
-          options.book_uri.substr(sizeof(kSqlitePrefix) - 1) +
-          ".daichod-journal";
+    if (!options.book_path().empty()) {
+      options.journal_path = options.book_path() + ".daichod-journal";
     } else {
       Fail("usage", "--journal is required for non-sqlite3 books");
     }
+  }
+  if (!options.backup_dir.empty() && options.book_path().empty()) {
+    Fail("usage",
+         "--backup-dir requires a sqlite3 book; database backups are a "
+         "deployment concern");
   }
   return options;
 }
@@ -126,11 +148,26 @@ void AcquireLocks(const std::string& socket_path) {
 int Run(const Options& options) {
   AcquireLocks(options.socket_path);
 
+  // Startup order per DESIGN.md: locks → daily snapshot (files quiescent
+  // before anything opens them) → sidecar journal → book → integrity
+  // checks → pending-mutation reconciliation → report indeterminates →
+  // serve.
+  if (!options.backup_dir.empty()) {
+    try {
+      if (SnapshotBeforeOpen(options.book_path(), options.journal_path,
+                             options.backup_dir, options.backup_keep_days)) {
+        std::fprintf(stderr, "daichod: snapshotted book and journal to %s\n",
+                     options.backup_dir.c_str());
+      }
+    } catch (const std::exception& e) {
+      Fail("backup_failed", e.what());
+    }
+  }
+
   EngineWorker worker(options.queue_depth);
   Session session(
       Session::Config{options.book_uri, options.read_only});
 
-  // Startup order per DESIGN.md: locks (above) → sidecar journal → book.
   std::unique_ptr<Journal> journal;
   try {
     worker.Run([&journal, &options] {
@@ -147,6 +184,25 @@ int Run(const Options& options) {
     });
   } catch (const std::exception& e) {
     Fail("book_open_failed", e.what());
+  }
+
+  try {
+    worker.Run([&session] { session.RunStartupChecks(); });
+  } catch (const std::exception& e) {
+    Fail("startup_check_failed", e.what());
+  }
+
+  try {
+    const std::size_t reconciled = worker.Run([&journal, &session] {
+      return ReconcilePendingMutations(journal.get(), session.book());
+    });
+    if (reconciled > 0) {
+      std::fprintf(stderr,
+                   "daichod: %zu pending mutation(s) reconciled as applied\n",
+                   reconciled);
+    }
+  } catch (const std::exception& e) {
+    Fail("reconciliation_failed", e.what());
   }
 
   const std::size_t indeterminate_count =

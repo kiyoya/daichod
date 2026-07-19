@@ -105,7 +105,8 @@ add_library(daichod_core STATIC
   src/rpc/error.cpp
   src/rpc/mutation.cpp
   src/rpc/session_service.cpp
-  src/rpc/transaction_service.cpp)
+  src/rpc/transaction_service.cpp
+  src/util/backup.cpp)
 target_include_directories(daichod_core PUBLIC src ${CMAKE_CURRENT_BINARY_DIR}/gen)
 target_link_libraries(daichod_core
   PUBLIC daichod_proto gnucash_engine PkgConfig::SQLITE)
