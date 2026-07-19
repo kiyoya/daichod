@@ -2,10 +2,17 @@
 
 #include <utility>
 
+#include <map>
+#include <string>
+
 #include <Account.h>
+#include <Query.h>
+#include <Split.h>
+#include <Transaction.h>
 #include <gnc-engine.h>
 #include <qof.h>
 
+#include "engine/map.h"
 #include "rpc/error.h"
 
 namespace daichod {
@@ -87,6 +94,21 @@ void Session::Open() {
                     config_.read_only ? SESSION_READ_ONLY
                                       : SESSION_NORMAL_OPEN);
   QofBackendError error = qof_session_get_error(session);
+
+  // The engine's own book-level lock is a row inside the book itself,
+  // released only by a clean session end; a crash-point abort() never gets
+  // there, so it outlives the process. daichod's flock on the socket path
+  // (AcquireLocks in main.cpp, taken before Open() is ever reached) is the
+  // authoritative check for a second live daichod instance, so a lock
+  // reported here can only be this book's own stale lock from a prior
+  // crash — break it, exactly as DESIGN.md promises ("a crash is a restart
+  // ... never a recovery procedure"). Retrying on the same session object
+  // is safe: a failed begin() resets its internal URI/backend state.
+  if (error == ERR_BACKEND_LOCKED && !config_.read_only) {
+    qof_session_begin(session, config_.book_uri.c_str(), SESSION_BREAK_LOCK);
+    error = qof_session_get_error(session);
+  }
+
   if (error != ERR_BACKEND_NO_ERR) {
     ShimError shim_error =
         BackendError(error, qof_session_get_error_message(session),
@@ -132,5 +154,6 @@ QofBook* Session::book() const {
 ::Account* Session::root_account() const {
   return gnc_book_get_root_account(book());
 }
+
 
 }  // namespace daichod
