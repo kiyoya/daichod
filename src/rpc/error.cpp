@@ -19,7 +19,11 @@ grpc::Status PackStatus(grpc::StatusCode grpc_code, shim::ErrorCode code,
   google::rpc::Status rpc_status;
   rpc_status.set_code(static_cast<int>(grpc_code));
   rpc_status.set_message(message);
-  rpc_status.add_details()->PackFrom(detail);
+  if (!rpc_status.add_details()->PackFrom(detail)) {
+    // Cannot happen for our own small message; if it somehow does, the
+    // status still carries the code and text.
+    rpc_status.clear_details();
+  }
   return grpc::Status(grpc_code, message, rpc_status.SerializeAsString());
 }
 
