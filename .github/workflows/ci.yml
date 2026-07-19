@@ -61,14 +61,16 @@ jobs:
           restore-keys: ccache-${{ runner.os }}-
       - name: Build daichod
         run: >
-          docker run --rm -v "$PWD:/src" daichod-dev:ci
-          bash -c "cmake -S /src -B /src/build -G Ninja
+          docker run --rm -v "$PWD:/src" -v daichod-build:/build
+          -v "$PWD/.ccache:/ccache" daichod-dev:ci
+          bash -c "cmake -S /src -B /build -G Ninja
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          && cmake --build /src/build"
+          && cmake --build /build"
       - name: Run tests
         run: >
-          docker run --rm -v "$PWD:/src" daichod-dev:ci
-          bash -c "ctest --test-dir /src/build/test -j \"\$(nproc)\"
+          docker run --rm -v "$PWD:/src" -v daichod-build:/build
+          daichod-dev:ci
+          bash -c "ctest --test-dir /build/test -j \"\$(nproc)\"
           --output-on-failure"
       - name: Build runtime image
         uses: docker/build-push-action@v6
