@@ -54,6 +54,49 @@ TEST_F(DaemonFixture, CloseAndReopenBook) {
   }
 }
 
+TEST_F(DaemonFixture, CloseFailureAllowsReopen) {
+  // A failed final save must not wedge the session: Close() completes
+  // teardown before rethrowing, so session_ is null and Open() (via
+  // OpenBook) is free to run again rather than silently no-op.
+  StopDaemon();
+  StartDaemon(daichod_bin_, {"DAICHOD_FAIL_AT=session_close_save"});
+  auto stub = shim::SessionService::NewStub(Connect());
+
+  {
+    grpc::ClientContext context;
+    shim::Empty request, response;
+    EXPECT_FALSE(stub->CloseBook(&context, request, &response).ok());
+  }
+  {
+    grpc::ClientContext context;
+    shim::Empty request;
+    shim::BookInfo info;
+    ASSERT_TRUE(stub->OpenBook(&context, request, &info).ok());
+  }
+  {
+    grpc::ClientContext context;
+    shim::Empty request;
+    shim::PingResponse response;
+    ASSERT_TRUE(stub->Ping(&context, request, &response).ok());
+    EXPECT_TRUE(response.book_open());
+  }
+}
+
+TEST_F(DaemonFixture, SigtermExitsNonzeroWithoutAbortWhenSaveFails) {
+  // The destructor's re-close on shutdown must never escape past Close():
+  // a second save failure there logs and swallows rather than terminating,
+  // and the daemon still exits nonzero so the supervisor sees the failure.
+  StopDaemon();
+  StartDaemon(daichod_bin_, {"DAICHOD_FAIL_AT=session_close_save"});
+  Connect();
+
+  kill(daemon_pid_, SIGTERM);
+  const int status = WaitForExit();
+  ASSERT_TRUE(WIFEXITED(status)) << "daemon did not exit cleanly (signaled: "
+                                 << WIFSIGNALED(status) << ")";
+  EXPECT_NE(WEXITSTATUS(status), 0);
+}
+
 TEST_F(DaemonFixture, SecondInstanceFailsLoudly) {
   Connect();
   // Same socket, same book: the flock must reject it, quickly and nonzero.

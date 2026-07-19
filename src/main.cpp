@@ -146,6 +146,19 @@ void AcquireLocks(const std::string& socket_path) {
 }
 
 int Run(const Options& options) {
+  // SIGTERM/SIGINT must be blocked before any other thread in this process
+  // exists: POSIX delivers a process-directed signal to any thread that
+  // hasn't blocked it, and every thread inherits its mask at creation time.
+  // Blocking here, ahead of EngineWorker and the gRPC server threads, is
+  // what guarantees the drain path below runs instead of default
+  // termination. A signal arriving before signal_thread's sigwait() just
+  // stays pending.
+  sigset_t signals;
+  sigemptyset(&signals);
+  sigaddset(&signals, SIGTERM);
+  sigaddset(&signals, SIGINT);
+  pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
   AcquireLocks(options.socket_path);
 
   // Startup order per DESIGN.md: locks → daily snapshot (files quiescent
@@ -232,12 +245,8 @@ int Run(const Options& options) {
   if (server == nullptr) Fail("listen_failed", options.socket_path);
 
   // SIGTERM/SIGINT: drain the queue, close the book cleanly, release locks.
-  // Signals are blocked on every thread and handled synchronously here.
-  sigset_t signals;
-  sigemptyset(&signals);
-  sigaddset(&signals, SIGTERM);
-  sigaddset(&signals, SIGINT);
-  pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+  // Mask was set at the top of Run(), before any thread existed; handled
+  // synchronously here.
   std::thread signal_thread([&signals, &server] {
     int received = 0;
     sigwait(&signals, &received);
@@ -249,12 +258,15 @@ int Run(const Options& options) {
   server->Wait();
 
   // In-flight handlers have finished; run the close on the engine thread,
-  // then drain whatever is still queued.
+  // then drain whatever is still queued. A failed final save must not exit
+  // 0 — the supervisor treats that as a clean shutdown.
+  int exit_code = 0;
   try {
     worker.Run([&session] { session.Close(); });
   } catch (const std::exception& e) {
     std::fprintf(stderr, "{\"error\":\"close_failed\",\"detail\":\"%s\"}\n",
                  e.what());
+    exit_code = 1;
   }
   worker.Drain();
   unlink(options.socket_path.c_str());
@@ -262,7 +274,7 @@ int Run(const Options& options) {
   // Wake and join the signal thread if shutdown came from elsewhere.
   kill(getpid(), SIGTERM);
   signal_thread.join();
-  return 0;
+  return exit_code;
 }
 
 }  // namespace
