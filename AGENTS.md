@@ -37,8 +37,8 @@ their workarounds. Nothing builds on the host, ever.
   Finalize per the human's choice: local squash merge onto main, a
   pushed branch for a GitHub squash-merge, or per-commit sign-off.
   Ask before pushing.
-- In PR and issue descriptions, you should leave your identity. For example, include
-  a footer like `<emoji> Generated with [Agent Name]` where "[Agent Name]"
+- In PR and issue descriptions, you should leave your identity. Pick an emoji to identify yourself. For example, include
+  a footer like `🚀 Generated with [Agent Name]` where "[Agent Name]"
   is a link to the agent's website or documentation (e.g., Antigravity).
 
 ## Invariants to never break
