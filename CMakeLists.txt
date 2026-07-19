@@ -99,6 +99,7 @@ add_library(daichod_core STATIC
   src/engine/session.cpp
   src/engine/worker.cpp
   src/journal/journal.cpp
+  src/rpc/account_service.cpp
   src/rpc/error.cpp
   src/rpc/mutation.cpp
   src/rpc/session_service.cpp)
