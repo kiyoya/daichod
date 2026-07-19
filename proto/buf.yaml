@@ -1,0 +1,15 @@
+# buf configuration for the daicho.shim.v1 contract.
+version: v2
+lint:
+  use:
+    - STANDARD
+  except:
+    # The contract intentionally keeps its authored shape: flat proto/
+    # layout (schema and repo share one home) and bare enum value names.
+    # Both are stylistic; neither affects the wire.
+    - PACKAGE_DIRECTORY_MATCH
+    - ENUM_VALUE_PREFIX
+    - ENUM_ZERO_VALUE_SUFFIX
+breaking:
+  use:
+    - WIRE_JSON
