@@ -1,0 +1,43 @@
+name: Publish
+
+# A contract tag (Major.YYYYMMDD.Iteration, see CONTRACT.md) publishes the
+# runtime image to GitHub Packages as ghcr.io/<repo>:<tag> and :latest.
+# Deliberately no GitHub Release: tags and packages are the whole release
+# story. The tagged commit already passed the full suite as a PR and again
+# on main, so this job only assembles and pushes the deliverable; the warm
+# registry layer cache keeps it to a couple of minutes.
+on:
+  push:
+    tags: ["[0-9]*.[0-9]*.[0-9]*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      CACHE_REF: ghcr.io/${{ github.repository }}/buildcache
+      IMAGE_REF: ghcr.io/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # provenance off: the attestation manifest shows up as a confusing
+      # extra "unknown/unknown" entry on a single-arch image.
+      - name: Build and push runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Containerfile
+          target: runtime
+          push: true
+          tags: |
+            ${{ env.IMAGE_REF }}:${{ github.ref_name }}
+            ${{ env.IMAGE_REF }}:latest
+          cache-from: type=registry,ref=${{ env.CACHE_REF }}
+          provenance: false
