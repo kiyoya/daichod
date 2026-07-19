@@ -12,9 +12,15 @@
 //   * Post dates are calendar dates (Date), not timestamps — GnuCash posting
 //     dates are timezone-free by design. Entry timestamps are epoch seconds UTC.
 
-syntax = "proto3";
+edition = "2024";
 
 package daicho.shim.v1;
+
+import "google/protobuf/cpp_features.proto";
+
+// Edition 2024 defaults C++ string accessors to absl::string_view; pinned
+// to STRING while the shim's call sites migrate.
+option features.(pb.cpp).string_type = STRING;
 
 // ---------------------------------------------------------------- primitives
 

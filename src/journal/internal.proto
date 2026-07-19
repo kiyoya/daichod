@@ -4,11 +4,14 @@
 // sent on the wire; stored in the sidecar's `applied` table so a duplicate
 // mutation_id can be answered with the recorded outcome byte-for-byte.
 
-syntax = "proto3";
+edition = "2024";
 
 package daichod.internal;
 
+import "google/protobuf/cpp_features.proto";
 import "shim.proto";
+
+option features.(pb.cpp).string_type = STRING;
 
 message Outcome {
   string rpc_name = 1;
