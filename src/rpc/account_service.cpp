@@ -36,17 +36,6 @@ void CheckIsNotRoot(::Account* account, ::Account* root,
   }
 }
 
-void FillReconcileInfo(::Account* account, shim::ReconcileInfo* out) {
-  out->set_account_guid(GuidToString(qof_instance_get_guid(account)));
-  time64 last_date = 0;
-  if (xaccAccountGetReconcileLastDate(account, &last_date)) {
-    const GDate date = time64_to_gdate(last_date);
-    DateToProto(date, out->mutable_last_date());
-  }
-  NumericToProto(xaccAccountGetReconciledBalance(account),
-                 out->mutable_reconciled_balance());
-}
-
 }  // namespace
 
 grpc::Status AccountServiceImpl::ListAccounts(grpc::ServerContext*,
@@ -79,7 +68,8 @@ grpc::Status AccountServiceImpl::CreateAccount(
   return RunMutation(
       worker_, journal_, request->meta(), *request,
       "daicho.shim.v1.AccountService/CreateAccount", response,
-      [this, request](shim::Account* out) {
+      [this, request](shim::Account* out,
+                      const PendingRecorder& record_pending) {
         const shim::Account& spec = request->account();
         if (!spec.guid().empty()) {
           throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
@@ -113,8 +103,9 @@ grpc::Status AccountServiceImpl::CreateAccount(
         xaccAccountSetPlaceholder(account, spec.placeholder());
         xaccAccountSetHidden(account, spec.hidden());
         gnc_account_append_child(parent, account);
-        xaccAccountCommitEdit(account);
         AccountToProto(account, out);
+        record_pending();
+        xaccAccountCommitEdit(account);
       });
 }
 
@@ -124,7 +115,8 @@ grpc::Status AccountServiceImpl::UpdateAccount(
   return RunMutation(
       worker_, journal_, request->meta(), *request,
       "daicho.shim.v1.AccountService/UpdateAccount", response,
-      [this, request](shim::Account* out) {
+      [this, request](shim::Account* out,
+                      const PendingRecorder& record_pending) {
         const shim::Account& spec = request->account();
         if (spec.guid().empty()) {
           throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
@@ -163,8 +155,9 @@ grpc::Status AccountServiceImpl::UpdateAccount(
         if (new_parent != gnc_account_get_parent(account)) {
           gnc_account_append_child(new_parent, account);
         }
-        xaccAccountCommitEdit(account);
         AccountToProto(account, out);
+        record_pending();
+        xaccAccountCommitEdit(account);
       });
 }
 
@@ -174,7 +167,7 @@ grpc::Status AccountServiceImpl::DeleteAccount(
   return RunMutation(
       worker_, journal_, request->meta(), *request,
       "daicho.shim.v1.AccountService/DeleteAccount", response,
-      [this, request](shim::Empty*) {
+      [this, request](shim::Empty*, const PendingRecorder& record_pending) {
         ::Account* account =
             FindAccount(session_->book(), request->guid(), "guid");
         CheckIsNotRoot(account, session_->root_account(), "guid");
@@ -183,6 +176,7 @@ grpc::Status AccountServiceImpl::DeleteAccount(
           throw ShimError(shim::ACCOUNT_NOT_EMPTY,
                           "account has splits or children", request->guid());
         }
+        record_pending();
         xaccAccountBeginEdit(account);
         xaccAccountDestroy(account);  // commits the edit itself
       });
@@ -192,7 +186,7 @@ grpc::Status AccountServiceImpl::GetReconcileInfo(
     grpc::ServerContext*, const shim::AccountRef* request,
     shim::ReconcileInfo* response) {
   return RunRpc(worker_, [this, request, response] {
-    FillReconcileInfo(FindAccount(session_->book(), request->guid(), "guid"),
+    ReconcileInfoToProto(FindAccount(session_->book(), request->guid(), "guid"),
                       response);
   });
 }
@@ -203,7 +197,8 @@ grpc::Status AccountServiceImpl::SetReconcileInfo(
   return RunMutation(
       worker_, journal_, request->meta(), *request,
       "daicho.shim.v1.AccountService/SetReconcileInfo", response,
-      [this, request](shim::ReconcileInfo* out) {
+      [this, request](shim::ReconcileInfo* out,
+                      const PendingRecorder& record_pending) {
         ::Account* account = FindAccount(session_->book(),
                                          request->account_guid(),
                                          "account_guid");
@@ -219,8 +214,9 @@ grpc::Status AccountServiceImpl::SetReconcileInfo(
             g_date_get_year(&date));
         xaccAccountBeginEdit(account);
         xaccAccountSetReconcileLastDate(account, stamp);
+        ReconcileInfoToProto(account, out);
+        record_pending();
         xaccAccountCommitEdit(account);
-        FillReconcileInfo(account, out);
       });
 }
 

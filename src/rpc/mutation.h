@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ctime>
+#include <functional>
 #include <string>
 #include <utility>
 
@@ -18,12 +19,19 @@ namespace daichod {
 // (8-4-4-4-12 lowercase/uppercase hex). The journal keys on this string.
 void ValidateMutationId(const std::string& mutation_id);
 
+// Invoked by apply() with the response fully built, immediately before its
+// engine commit; durably records the would-be response so crash recovery
+// can decide the mutation's fate exactly (see DESIGN.md step 3a).
+using PendingRecorder = std::function<void()>;
+
 // The mutation protocol, in one place. Every mutating RPC runs through here:
 //
 //   1. journal the full request; fsync (Journal has synchronous=FULL)
 //   2. a previously applied mutation_id returns its recorded outcome untouched
-//   3. apply(response) on the engine thread — the callee wraps its work in
-//      the engine's BeginEdit/CommitEdit so partial application is impossible
+//   3. apply(response, record_pending) on the engine thread — the callee
+//      builds the complete response, calls record_pending() (step 3a), then
+//      commits its engine edit, so "applied" and "pending-recorded" can only
+//      disagree in one crash window that startup reconciliation closes
 //   4. record outcome (success bytes or typed failure); fsync; respond
 //
 // Only deterministic results are recorded: a ShimError is an outcome, any
@@ -54,10 +62,16 @@ grpc::Status RunMutation(EngineWorker* worker, Journal* journal,
         return;
       }
 
+      const PendingRecorder record_pending = [&] {
+        journal->RecordPending(meta.mutation_id(),
+                               response->SerializeAsString());
+        CrashPointMaybe("after_pending");
+      };
+
       internal::Outcome outcome;
       outcome.set_rpc_name(rpc_name);
       try {
-        apply(response);
+        apply(response, record_pending);
         CrashPointMaybe("after_apply");
         outcome.set_ok(true);
         outcome.set_response(response->SerializeAsString());

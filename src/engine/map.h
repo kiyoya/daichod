@@ -51,6 +51,8 @@ GNCAccountType AccountTypeFromProto(daicho::shim::v1::AccountType type,
                                     const std::string& context);
 daicho::shim::v1::AccountType AccountTypeToProto(GNCAccountType type);
 void AccountToProto(::Account* account, daicho::shim::v1::Account* out);
+void ReconcileInfoToProto(::Account* account,
+                          daicho::shim::v1::ReconcileInfo* out);
 
 // ---------------------------------------------------- transactions/splits
 ::Transaction* FindTransaction(QofBook* book, const std::string& guid,

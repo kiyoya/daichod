@@ -109,7 +109,8 @@ grpc::Status CommodityServiceImpl::AddPrice(grpc::ServerContext*,
   return RunMutation(
       worker_, journal_, request->meta(), *request,
       "daicho.shim.v1.CommodityService/AddPrice", response,
-      [this, request](shim::Price* out) {
+      [this, request](shim::Price* out,
+                      const PendingRecorder& record_pending) {
         const shim::Price& spec = request->price();
         if (!spec.guid().empty()) {
           throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
@@ -145,9 +146,10 @@ grpc::Status CommodityServiceImpl::AddPrice(grpc::ServerContext*,
         gnc_price_set_value(price, value);
         gnc_price_set_source_string(
             price, spec.source().empty() ? "shim:api" : spec.source().c_str());
+        PriceToProto(price, out);
+        record_pending();
         gnc_price_commit_edit(price);
         gnc_pricedb_add_price(gnc_pricedb_get_db(book), price);
-        PriceToProto(price, out);
         gnc_price_unref(price);
       });
 }

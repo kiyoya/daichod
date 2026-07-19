@@ -16,10 +16,12 @@ Every mutating RPC carries a client UUID. Lifecycle:
 
 1. Append the full request to an intent journal (sidecar SQLite next to the book); fsync.
 2. Consult the applied-mutations table; a previously applied ID returns its recorded outcome untouched.
-3. Execute on the engine thread inside `xaccTransBeginEdit`/`CommitEdit` (or account equivalent); any engine error rolls back the edit — partial application is impossible.
+3. Execute on the engine thread inside `xaccTransBeginEdit`/`CommitEdit` (or account equivalent); any engine error rolls back the edit — partial application is impossible. Immediately before the engine commit, journal the would-be response (engine GUIDs are assigned at allocation, so it is complete) as a *pending* record; fsync.
 4. Record outcome (success + GUIDs, or typed failure); fsync; respond.
 
-After a crash, journal entries with no recorded outcome are reported via `ListIndeterminateMutations` — never silently replayed. daicho-api resolves them by re-issuing with the same ID, which step 2 makes safe. The book must use the SQLite/Postgres backend so engine commits persist incrementally; XML-backed books are refused rather than pretending whole-file saves are crash-safe.
+The pending record closes the gap between the engine's commit and the journal's outcome — the one window where "applied" and "recorded" can disagree. On startup, each journaled intent with a pending record but no outcome is reconciled against the book: if the book shows the mutation's effect (the created GUID exists, the entity matches the pending response, the deleted entity is gone), the outcome is recorded as applied; otherwise the pending record is dropped. No later mutation can have intervened — the engine thread is serial and the indeterminate mutation was the last thing before the crash — so the check is exact.
+
+After reconciliation, journal entries with no recorded outcome are reported via `ListIndeterminateMutations` — never silently replayed. daicho-api resolves them by re-issuing with the same ID, which step 2 (plus reconciliation) makes safe: a reported-indeterminate mutation is guaranteed unapplied. The book must use the SQLite/Postgres backend so engine commits persist incrementally; XML-backed books are refused rather than pretending whole-file saves are crash-safe.
 
 ## Reads, errors, reconcile metadata
 

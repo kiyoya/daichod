@@ -66,7 +66,11 @@ TransactionPlan PlanTransaction(QofBook* book, const shim::Transaction& spec,
                     "transaction.post_date");
   }
   plan.post_date = DateFromProto(spec.post_date(), "transaction.post_date");
-  plan.enter_time = spec.enter_time_utc();
+  // 0 = now, resolved here rather than left to the engine's commit hook so
+  // the pending response (serialized pre-commit) matches the committed
+  // state byte-for-byte — crash reconciliation depends on that.
+  plan.enter_time =
+      spec.enter_time_utc() != 0 ? spec.enter_time_utc() : gnc_time(nullptr);
   plan.num = spec.num();
   plan.description = spec.description();
 
@@ -159,9 +163,7 @@ void ApplyPlan(QofBook* book, ::Transaction* transaction,
                const TransactionPlan& plan) {
   xaccTransSetCurrency(transaction, plan.currency);
   xaccTransSetDatePostedGDate(transaction, plan.post_date);
-  if (plan.enter_time != 0) {
-    xaccTransSetDateEnteredSecs(transaction, plan.enter_time);
-  }
+  xaccTransSetDateEnteredSecs(transaction, plan.enter_time);
   xaccTransSetNum(transaction, plan.num.c_str());
   xaccTransSetDescription(transaction, plan.description.c_str());
   for (::Split* split : plan.doomed) xaccSplitDestroy(split);
@@ -218,7 +220,8 @@ grpc::Status TransactionServiceImpl::PostTransaction(
   return RunMutation(
       worker_, journal_, request->meta(), *request,
       "daicho.shim.v1.TransactionService/PostTransaction", response,
-      [this, request](shim::Transaction* out) {
+      [this, request](shim::Transaction* out,
+                      const PendingRecorder& record_pending) {
         const shim::Transaction& spec = request->transaction();
         if (!spec.guid().empty()) {
           throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
@@ -230,8 +233,9 @@ grpc::Status TransactionServiceImpl::PostTransaction(
         ::Transaction* transaction = xaccMallocTransaction(book);
         xaccTransBeginEdit(transaction);
         ApplyPlan(book, transaction, plan);
-        xaccTransCommitEdit(transaction);
         TransactionToProto(transaction, out);
+        record_pending();
+        xaccTransCommitEdit(transaction);
       });
 }
 
@@ -241,7 +245,8 @@ grpc::Status TransactionServiceImpl::UpdateTransaction(
   return RunMutation(
       worker_, journal_, request->meta(), *request,
       "daicho.shim.v1.TransactionService/UpdateTransaction", response,
-      [this, request](shim::Transaction* out) {
+      [this, request](shim::Transaction* out,
+                      const PendingRecorder& record_pending) {
         const shim::Transaction& spec = request->transaction();
         if (spec.guid().empty()) {
           throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
@@ -253,8 +258,9 @@ grpc::Status TransactionServiceImpl::UpdateTransaction(
         const TransactionPlan plan = PlanTransaction(book, spec, transaction);
         xaccTransBeginEdit(transaction);
         ApplyPlan(book, transaction, plan);
-        xaccTransCommitEdit(transaction);
         TransactionToProto(transaction, out);
+        record_pending();
+        xaccTransCommitEdit(transaction);
       });
 }
 
@@ -264,9 +270,10 @@ grpc::Status TransactionServiceImpl::DeleteTransaction(
   return RunMutation(
       worker_, journal_, request->meta(), *request,
       "daicho.shim.v1.TransactionService/DeleteTransaction", response,
-      [this, request](shim::Empty*) {
+      [this, request](shim::Empty*, const PendingRecorder& record_pending) {
         ::Transaction* transaction =
             FindTransaction(session_->book(), request->guid(), "guid");
+        record_pending();
         xaccTransBeginEdit(transaction);
         xaccTransDestroy(transaction);
         xaccTransCommitEdit(transaction);

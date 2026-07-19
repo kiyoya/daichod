@@ -43,6 +43,27 @@ class Journal {
   // Step 2: the recorded outcome of a previously applied mutation, if any.
   std::optional<internal::Outcome> GetOutcome(const std::string& mutation_id);
 
+  // Step 3a: durably records the would-be response immediately before the
+  // engine commit. Closes the applied-but-unrecorded crash window: startup
+  // reconciliation compares this against the book to decide the mutation's
+  // fate exactly.
+  void RecordPending(const std::string& mutation_id,
+                     const std::string& response_bytes);
+
+  struct PendingEntry {
+    std::string mutation_id;
+    std::string rpc_name;
+    std::string request_payload;
+    std::string pending_response;
+  };
+  // Intents that reached step 3a but have no recorded outcome — the inputs
+  // to startup reconciliation.
+  std::vector<PendingEntry> ListPendingUnresolved();
+
+  // Reconciliation verdict "not applied": drop the pending record so the
+  // entry is reported plainly indeterminate.
+  void ClearPending(const std::string& mutation_id);
+
   // Step 4: durably records the outcome. A mutation_id may be resolved only
   // once; recording twice indicates a protocol bug and throws.
   void RecordOutcome(const std::string& mutation_id,

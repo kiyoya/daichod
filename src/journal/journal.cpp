@@ -124,7 +124,8 @@ std::unique_ptr<Journal> Journal::Open(const std::string& path) {
        "  rpc_name TEXT NOT NULL,"
        "  payload BLOB NOT NULL,"
        "  payload_sha256 BLOB NOT NULL,"
-       "  journaled_at_utc INTEGER NOT NULL)");
+       "  journaled_at_utc INTEGER NOT NULL,"
+       "  pending_response BLOB)");
   Exec(db,
        "CREATE TABLE IF NOT EXISTS applied ("
        "  mutation_id TEXT PRIMARY KEY"
@@ -162,6 +163,36 @@ std::optional<internal::Outcome> Journal::GetOutcome(
                     "journal: corrupt outcome record", mutation_id);
   }
   return outcome;
+}
+
+void Journal::RecordPending(const std::string& mutation_id,
+                            const std::string& response_bytes) {
+  Stmt stmt(db_,
+            "UPDATE intents SET pending_response = ? WHERE mutation_id = ?");
+  stmt.BindBlob(1, response_bytes).BindText(2, mutation_id);
+  stmt.Step();
+}
+
+std::vector<Journal::PendingEntry> Journal::ListPendingUnresolved() {
+  Stmt stmt(db_,
+            "SELECT i.mutation_id, i.rpc_name, i.payload, i.pending_response "
+            "FROM intents i LEFT JOIN applied a USING (mutation_id) "
+            "WHERE a.mutation_id IS NULL AND i.pending_response IS NOT NULL "
+            "ORDER BY i.journaled_at_utc");
+  std::vector<PendingEntry> entries;
+  while (stmt.Step()) {
+    entries.push_back(PendingEntry{stmt.ColumnText(0), stmt.ColumnText(1),
+                                   stmt.ColumnBlob(2), stmt.ColumnBlob(3)});
+  }
+  return entries;
+}
+
+void Journal::ClearPending(const std::string& mutation_id) {
+  Stmt stmt(db_,
+            "UPDATE intents SET pending_response = NULL "
+            "WHERE mutation_id = ?");
+  stmt.BindText(1, mutation_id);
+  stmt.Step();
 }
 
 void Journal::RecordOutcome(const std::string& mutation_id,

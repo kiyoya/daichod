@@ -1,5 +1,7 @@
 #include "engine/map.h"
 
+#include <gnc-date.h>
+
 #include "rpc/error.h"
 
 namespace daichod {
@@ -149,6 +151,17 @@ shim::AccountType AccountTypeToProto(GNCAccountType type) {
   }
 }
 
+void ReconcileInfoToProto(::Account* account, shim::ReconcileInfo* out) {
+  out->set_account_guid(GuidToString(qof_instance_get_guid(account)));
+  time64 last_date = 0;
+  if (xaccAccountGetReconcileLastDate(account, &last_date)) {
+    const GDate date = time64_to_gdate(last_date);
+    DateToProto(date, out->mutable_last_date());
+  }
+  NumericToProto(xaccAccountGetReconciledBalance(account),
+                 out->mutable_reconciled_balance());
+}
+
 ::Transaction* FindTransaction(QofBook* book, const std::string& guid,
                                const std::string& context) {
   const GncGUID parsed = StringToGuid(guid, context);
@@ -212,7 +225,16 @@ void TransactionToProto(::Transaction* transaction, shim::Transaction* out) {
   out->set_description(safe(xaccTransGetDescription(transaction)));
   for (GList* node = xaccTransGetSplitList(transaction); node != nullptr;
        node = node->next) {
-    SplitToProto(static_cast<::Split*>(node->data), out->add_splits());
+    auto* split = static_cast<::Split*>(node->data);
+    // A split queued for destruction (xaccSplitDestroy) is only actually
+    // unlinked from this list by the transaction's outermost CommitEdit
+    // (see trans_cleanup_commit in the engine); within a still-open edit —
+    // exactly where the mutation protocol serializes the response before
+    // committing — it lingers here. Skip it so the pre-commit response
+    // matches the post-commit book exactly, which crash reconciliation
+    // depends on.
+    if (qof_instance_get_destroying(QOF_INSTANCE(split))) continue;
+    SplitToProto(split, out->add_splits());
   }
 }
 
