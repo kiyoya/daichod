@@ -16,6 +16,23 @@ add_executable(daichod_integration_tests
 target_link_libraries(daichod_integration_tests
   PRIVATE daichod_proto GTest::gtest_main)
 add_dependencies(daichod_integration_tests daichod daichod-mkbook)
-gtest_discover_tests(daichod_integration_tests
-  PROPERTIES ENVIRONMENT
-    "DAICHOD_BIN=$<TARGET_FILE:daichod>;DAICHOD_MKBOOK=$<TARGET_FILE:daichod-mkbook>")
+gtest_discover_tests(daichod_integration_tests)
+
+# gtest_discover_tests' PROPERTIES ENVIRONMENT cannot carry two VAR=value
+# entries in one value: it round-trips the string through
+# cmake_parse_arguments() twice (once here, once inside the module's own
+# discovery script), and each pass re-splits on any semicolon regardless of
+# escaping, silently dropping every entry past the first. Set the two
+# environment variables the fixture needs via a post-discovery include
+# instead, using the per-test list gtest_discover_tests exports for exactly
+# this purpose.
+set(daichod_integration_tests_env_file
+  ${CMAKE_CURRENT_BINARY_DIR}/daichod_integration_tests_env.cmake)
+file(GENERATE OUTPUT ${daichod_integration_tests_env_file} CONTENT "\
+foreach(_test IN LISTS daichod_integration_tests_TESTS)
+  set_tests_properties(\"\${_test}\" PROPERTIES ENVIRONMENT
+    \"DAICHOD_BIN=$<TARGET_FILE:daichod>;DAICHOD_MKBOOK=$<TARGET_FILE:daichod-mkbook>\")
+endforeach()
+")
+set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
+  ${daichod_integration_tests_env_file})
