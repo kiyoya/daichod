@@ -52,6 +52,27 @@ grpc::StatusCode GrpcCodeFor(shim::ErrorCode code) {
   }
 }
 
+bool IsDeterministicVerdict(shim::ErrorCode code) {
+  switch (code) {
+    case shim::ERROR_CODE_UNBALANCED_TRANSACTION:
+    case shim::ERROR_CODE_ACCOUNT_NOT_FOUND:
+    case shim::ERROR_CODE_TXN_NOT_FOUND:
+    case shim::ERROR_CODE_COMMODITY_NOT_FOUND:
+    case shim::ERROR_CODE_CURRENCY_MISMATCH:
+    case shim::ERROR_CODE_ACCOUNT_NOT_EMPTY:
+    case shim::ERROR_CODE_INVALID_ARGUMENT:
+      return true;
+    case shim::ERROR_CODE_BOOK_NOT_OPEN:
+    case shim::ERROR_CODE_BOOK_LOCKED:
+    case shim::ERROR_CODE_READ_ONLY_BOOK:
+    case shim::ERROR_CODE_ENGINE_ERROR:
+    case shim::ERROR_CODE_INDETERMINATE_MUTATION:
+    case shim::ERROR_CODE_UNSPECIFIED:
+    default:
+      return false;
+  }
+}
+
 shim::ErrorDetail ShimError::ToDetail() const {
   shim::ErrorDetail detail;
   detail.set_code(code_);

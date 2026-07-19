@@ -15,6 +15,16 @@ namespace daichod {
 // replayed for a duplicate mutation_id, so both responses are identical.
 grpc::StatusCode GrpcCodeFor(daicho::shim::v1::ErrorCode code);
 
+// True for codes that are deterministic verdicts on the request given the
+// book's state at the time it ran (e.g. an unbalanced transaction): safe to
+// journal as the mutation's outcome and replay verbatim for a duplicate
+// mutation_id. False for codes that describe an environmental or transient
+// condition (e.g. the book was closed, the daemon is read-only, journal I/O
+// failed) rather than a property of the request itself; these must be left
+// unrecorded so a same-ID retry re-executes once the condition has cleared,
+// per the "never record non-deterministic failures as outcomes" invariant.
+bool IsDeterministicVerdict(daicho::shim::v1::ErrorCode code);
+
 // The one error currency inside the daemon. Thrown anywhere on the engine
 // thread or in RPC decoding, caught once at the gRPC boundary, and rendered
 // as a status whose grpc-status-details-bin carries a google.rpc.Status
