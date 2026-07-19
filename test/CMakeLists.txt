@@ -4,7 +4,9 @@ include(GoogleTest)
 add_executable(daichod_unit_tests
   unit/worker_test.cpp
   unit/error_test.cpp
-  unit/map_test.cpp)
+  unit/map_test.cpp
+  unit/journal_test.cpp
+  unit/mutation_test.cpp)
 target_link_libraries(daichod_unit_tests
   PRIVATE daichod_core GTest::gtest_main)
 gtest_discover_tests(daichod_unit_tests)
