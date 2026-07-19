@@ -1,5 +1,7 @@
 #include <chrono>
+#include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -31,6 +33,29 @@ class LifecycleTest : public DaemonFixture {
       if (entry.is_directory()) dirs.push_back(entry.path());
     }
     return dirs;
+  }
+
+  // Matches main.cpp's default: a sidecar next to the book, not a sibling
+  // path — plain string concatenation, no separator.
+  std::filesystem::path JournalPath() {
+    return book_path_.string() + ".daichod-journal";
+  }
+
+  // Matches TodayStamp() in backup.cpp: localtime YYYY-MM-DD.
+  static std::string TodayStamp() {
+    const std::time_t now = std::time(nullptr);
+    std::tm parts{};
+    localtime_r(&now, &parts);
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d",
+                 parts.tm_year + 1900, parts.tm_mon + 1, parts.tm_mday);
+    return buffer;
+  }
+
+  static void WriteFile(const std::filesystem::path& path,
+                        const std::string& contents) {
+    std::ofstream out(path, std::ios::binary);
+    out << contents;
   }
 
   std::filesystem::path backup_dir_;
@@ -74,6 +99,55 @@ TEST_F(LifecycleTest, BackupDirSnapshotsOnceAndLeavesItUntouchedOnRestart) {
            snapshot_size_before);
   EXPECT_EQ(std::filesystem::last_write_time(snapshotted_book),
            snapshot_mtime_before);
+}
+
+TEST_F(LifecycleTest, SnapshotIncludesSidecarFiles) {
+  StopDaemon();
+
+  // Bad-magic rollback journals: SQLite ignores (and removes) a "-journal"
+  // file that doesn't start with its magic number, so the daemon still
+  // starts cleanly — but SnapshotBeforeOpen runs before SQLite ever gets a
+  // chance to do that, and must have already copied them.
+  const std::filesystem::path book_journal(book_path_.string() + "-journal");
+  const std::filesystem::path journal_journal(JournalPath().string() +
+                                               "-journal");
+  WriteFile(book_journal, "garbage");
+  WriteFile(journal_journal, "garbage");
+
+  StartDaemon(daichod_bin_, /*extra_env=*/{},
+             {"--backup-dir", backup_dir_.string()});
+  Connect();
+
+  const std::vector<std::filesystem::path> dirs = DatedBackupDirs();
+  ASSERT_EQ(dirs.size(), 1u)
+      << "expected exactly one dated snapshot directory";
+  const std::filesystem::path snapshot_dir = dirs[0];
+  EXPECT_TRUE(std::filesystem::exists(snapshot_dir / book_journal.filename()))
+      << "snapshot is missing the book's -journal sidecar";
+  EXPECT_TRUE(
+      std::filesystem::exists(snapshot_dir / journal_journal.filename()))
+      << "snapshot is missing the journal's -journal sidecar";
+}
+
+TEST_F(LifecycleTest, StaleTmpSnapshotIsCleanedAndRetried) {
+  StopDaemon();
+
+  // Simulates a prior run that copied the book but threw partway through
+  // the journal copy: a ".tmp" directory left behind, no dated directory.
+  const std::filesystem::path tmp_dir = backup_dir_ / (TodayStamp() + ".tmp");
+  std::filesystem::create_directories(tmp_dir);
+  WriteFile(tmp_dir / "junk", "leftover from a failed attempt");
+
+  StartDaemon(daichod_bin_, /*extra_env=*/{},
+             {"--backup-dir", backup_dir_.string()});
+  Connect();
+
+  const std::filesystem::path snapshot_dir = backup_dir_ / TodayStamp();
+  EXPECT_TRUE(std::filesystem::exists(snapshot_dir))
+      << "a stale .tmp must not block today's snapshot from being retried";
+  EXPECT_TRUE(std::filesystem::exists(snapshot_dir / book_path_.filename()));
+  EXPECT_FALSE(std::filesystem::exists(tmp_dir))
+      << "the stale .tmp directory should have been removed";
 }
 
 }  // namespace
