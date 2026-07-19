@@ -1,13 +1,18 @@
 name: CI
 
-# Single-maintainer flow: no PRs; every push to main runs the full
-# pipeline directly.
+# Single-maintainer flow: no PRs. The cheap contract checks run on every
+# push; the container build + full test suite runs hourly (and on demand),
+# skipping entirely when the current commit already passed.
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
 
 jobs:
   proto:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +36,24 @@ jobs:
             echo "no tags yet; skipping breaking-change detection"
           fi
 
+  # Dedup gate: a cache marker exists iff this exact commit already passed
+  # build-test, so idle hours cost one no-op lookup instead of a build.
+  guard:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      tested: ${{ steps.marker.outputs.cache-hit }}
+    steps:
+      - id: marker
+        uses: actions/cache/restore@v4
+        with:
+          path: .build-tested
+          key: build-tested-${{ github.sha }}
+          lookup-only: true
+
   build-test:
+    needs: guard
+    if: needs.guard.outputs.tested != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -46,8 +68,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # The gnucash stage compiles GnuCash from source (~40 min cold); the
-      # registry cache makes that a one-time cost per version bump.
+      # The gnucash and grpc stages compile from source (~40 and ~20 min
+      # cold); the registry cache makes that a one-time cost per pin bump.
       - name: Build dev image
         uses: docker/build-push-action@v6
         with:
@@ -57,12 +79,9 @@ jobs:
           tags: daichod-dev:ci
           load: true
           cache-from: type=registry,ref=${{ env.CACHE_REF }}
-          cache-to: >-
-            ${{ github.event_name == 'push'
-                && format('type=registry,ref={0},mode=max', env.CACHE_REF)
-                || '' }}
-      # Compiler cache: the image sets CCACHE_DIR=/src/.ccache, so caching
-      # the repo-local directory carries object compilations across runs.
+          cache-to: type=registry,ref=${{ env.CACHE_REF }},mode=max
+      # Compiler cache: the image sets CCACHE_DIR=/ccache; the cached host
+      # directory is bind-mounted there.
       - name: Restore compiler cache
         uses: actions/cache@v4
         with:
@@ -90,3 +109,9 @@ jobs:
           target: runtime
           tags: daichod:ci
           cache-from: type=registry,ref=${{ env.CACHE_REF }}
+      - name: Mark commit as tested
+        run: touch .build-tested
+      - uses: actions/cache/save@v4
+        with:
+          path: .build-tested
+          key: build-tested-${{ github.sha }}
