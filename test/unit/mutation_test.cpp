@@ -52,10 +52,11 @@ TEST_F(MutationTest, SuccessCallsApplyOnceAndRecordsOutcome) {
   shim::Account response;
   const grpc::Status status = RunMutation(
       worker_.get(), journal_.get(), meta, request, "CreateAccount",
-      &response, [&](shim::Account* out) {
+      &response, [&](shim::Account* out, const PendingRecorder& record_pending) {
         ++apply_calls;
         out->set_guid("abc-guid");
         out->set_name("Checking");
+        record_pending();
       });
 
   EXPECT_TRUE(status.ok());
@@ -80,10 +81,11 @@ TEST_F(MutationTest, IdempotentReplayReturnsSameResponseWithoutCallingApply) {
   request.mutable_account()->set_name("Savings");
 
   int apply_calls = 0;
-  auto apply = [&](shim::Account* out) {
+  auto apply = [&](shim::Account* out, const PendingRecorder& record_pending) {
     ++apply_calls;
     out->set_guid("guid-1");
     out->set_name("Savings");
+    record_pending();
   };
 
   shim::Account first_response;
@@ -110,7 +112,7 @@ TEST_F(MutationTest, RecordedFailureReplaysWithoutCallingApplyAgain) {
   *request.mutable_meta() = meta;
 
   int apply_calls = 0;
-  auto apply = [&](shim::Transaction*) {
+  auto apply = [&](shim::Transaction*, const PendingRecorder&) {
     ++apply_calls;
     throw ShimError(shim::UNBALANCED_TRANSACTION, "splits do not sum to zero");
   };
@@ -139,7 +141,8 @@ TEST_F(MutationTest, InvalidMutationIdIsRejectedAndNeverJournaled) {
   shim::Account response;
   const grpc::Status status = RunMutation(
       worker_.get(), journal_.get(), meta, request, "CreateAccount",
-      &response, [&](shim::Account*) { ++apply_calls; });
+      &response,
+      [&](shim::Account*, const PendingRecorder&) { ++apply_calls; });
 
   EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   EXPECT_EQ(apply_calls, 0);
@@ -156,7 +159,7 @@ TEST_F(MutationTest, NonShimErrorFromApplyLeavesEntryIndeterminate) {
   const grpc::Status status = RunMutation(
       worker_.get(), journal_.get(), meta, request, "CreateAccount",
       &response,
-      [&](shim::Account*) -> void {
+      [&](shim::Account*, const PendingRecorder&) -> void {
         throw std::runtime_error("engine exploded");
       });
 
@@ -166,6 +169,42 @@ TEST_F(MutationTest, NonShimErrorFromApplyLeavesEntryIndeterminate) {
       journal_->ListIndeterminate();
   ASSERT_EQ(entries.size(), 1u);
   EXPECT_EQ(entries[0].mutation_id, meta.mutation_id());
+}
+
+TEST_F(MutationTest,
+      NonShimErrorAfterPendingRecordedLeavesPendingUnresolved) {
+  shim::MutationMeta meta;
+  meta.set_mutation_id("55555555-5555-5555-5555-555555555555");
+  shim::CreateAccountRequest request;
+  *request.mutable_meta() = meta;
+
+  shim::Account response;
+  const grpc::Status status = RunMutation(
+      worker_.get(), journal_.get(), meta, request, "CreateAccount",
+      &response,
+      [&](shim::Account* out, const PendingRecorder& record_pending) -> void {
+        out->set_guid("indeterminate-guid");
+        record_pending();
+        throw std::runtime_error("engine exploded after pending recorded");
+      });
+
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INTERNAL);
+
+  // Indeterminate: no outcome was ever recorded.
+  const std::vector<Journal::IndeterminateEntry> indeterminate =
+      journal_->ListIndeterminate();
+  ASSERT_EQ(indeterminate.size(), 1u);
+  EXPECT_EQ(indeterminate[0].mutation_id, meta.mutation_id());
+
+  // Pending recorded: this is exactly the crash window startup
+  // reconciliation exists to close.
+  const std::vector<Journal::PendingEntry> pending =
+      journal_->ListPendingUnresolved();
+  ASSERT_EQ(pending.size(), 1u);
+  EXPECT_EQ(pending[0].mutation_id, meta.mutation_id());
+  shim::Account pending_response;
+  ASSERT_TRUE(pending_response.ParseFromString(pending[0].pending_response));
+  EXPECT_EQ(pending_response.guid(), "indeterminate-guid");
 }
 
 }  // namespace

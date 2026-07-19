@@ -106,6 +106,65 @@ TEST_F(JournalTest, ListIndeterminateListsOnlyUnresolvedIntents) {
   EXPECT_EQ(entries[0].payload_sha256, Sha256(payload));
 }
 
+TEST_F(JournalTest, RecordPendingIsVisibleViaListPendingUnresolved) {
+  auto journal = Journal::Open(path_);
+  const std::string id = "66666666-6666-6666-6666-666666666666";
+  const std::string request_payload = "the-request-payload";
+  const std::string response_bytes = "the-pending-response-bytes";
+
+  journal->RecordIntent(id, "PostTransaction", request_payload, 1000);
+  journal->RecordPending(id, response_bytes);
+
+  const std::vector<Journal::PendingEntry> pending =
+      journal->ListPendingUnresolved();
+  ASSERT_EQ(pending.size(), 1u);
+  EXPECT_EQ(pending[0].mutation_id, id);
+  EXPECT_EQ(pending[0].rpc_name, "PostTransaction");
+  EXPECT_EQ(pending[0].request_payload, request_payload);
+  EXPECT_EQ(pending[0].pending_response, response_bytes);
+}
+
+TEST_F(JournalTest, ClearPendingRemovesItFromListPendingUnresolved) {
+  auto journal = Journal::Open(path_);
+  const std::string id = "77777777-7777-7777-7777-777777777777";
+
+  journal->RecordIntent(id, "PostTransaction", "payload", 1000);
+  journal->RecordPending(id, "response-bytes");
+  ASSERT_EQ(journal->ListPendingUnresolved().size(), 1u);
+
+  journal->ClearPending(id);
+
+  EXPECT_TRUE(journal->ListPendingUnresolved().empty());
+  // Clearing pending does not resolve the entry: it stays indeterminate.
+  const std::vector<Journal::IndeterminateEntry> indeterminate =
+      journal->ListIndeterminate();
+  ASSERT_EQ(indeterminate.size(), 1u);
+  EXPECT_EQ(indeterminate[0].mutation_id, id);
+}
+
+TEST_F(JournalTest, ListPendingUnresolvedExcludesEntriesWithOutcomes) {
+  auto journal = Journal::Open(path_);
+  const std::string resolved_id = "88888888-8888-8888-8888-888888888888";
+  const std::string still_pending_id = "99999999-9999-9999-9999-999999999999";
+
+  journal->RecordIntent(resolved_id, "PostTransaction", "payload-a", 1000);
+  journal->RecordPending(resolved_id, "response-a");
+  journal->RecordIntent(still_pending_id, "PostTransaction", "payload-b",
+                        1001);
+  journal->RecordPending(still_pending_id, "response-b");
+
+  internal::Outcome outcome;
+  outcome.set_rpc_name("PostTransaction");
+  outcome.set_ok(true);
+  outcome.set_response("response-a");
+  journal->RecordOutcome(resolved_id, outcome, 1002);
+
+  const std::vector<Journal::PendingEntry> pending =
+      journal->ListPendingUnresolved();
+  ASSERT_EQ(pending.size(), 1u);
+  EXPECT_EQ(pending[0].mutation_id, still_pending_id);
+}
+
 TEST(Sha256Test, MatchesWellKnownDigestForAbc) {
   const std::string digest = Sha256("abc");
   static constexpr unsigned char kExpected[32] = {

@@ -11,73 +11,41 @@ target_link_libraries(daichod_unit_tests
   PRIVATE daichod_core GTest::gtest_main)
 gtest_discover_tests(daichod_unit_tests)
 
-# Integration tests drive the real daemon over its Unix socket against a
-# fresh sqlite3 book; the binaries' paths reach the fixture via environment.
-add_executable(daichod_integration_tests
-  integration/session_test.cpp)
-target_link_libraries(daichod_integration_tests
-  PRIVATE daichod_proto GTest::gtest_main)
-add_dependencies(daichod_integration_tests daichod daichod-mkbook)
-gtest_discover_tests(daichod_integration_tests)
-
-# gtest_discover_tests' PROPERTIES ENVIRONMENT cannot carry two VAR=value
-# entries in one value: it round-trips the string through
-# cmake_parse_arguments() twice (once here, once inside the module's own
-# discovery script), and each pass re-splits on any semicolon regardless of
-# escaping, silently dropping every entry past the first. Set the two
-# environment variables the fixture needs via a post-discovery include
-# instead, using the per-test list gtest_discover_tests exports for exactly
-# this purpose.
-set(daichod_integration_tests_env_file
-  ${CMAKE_CURRENT_BINARY_DIR}/daichod_integration_tests_env.cmake)
-file(GENERATE OUTPUT ${daichod_integration_tests_env_file} CONTENT "\
-foreach(_test IN LISTS daichod_integration_tests_TESTS)
+# Daemon-driving test binaries: each spawns the real daichod over its Unix
+# socket against a fresh sqlite3 book, one binary per service area so they
+# grow independently.
+#
+# The fixture needs DAICHOD_BIN/DAICHOD_MKBOOK. gtest_discover_tests'
+# PROPERTIES ENVIRONMENT cannot carry two VAR=value entries in one value:
+# it round-trips the string through cmake_parse_arguments() twice (once in
+# the public macro, once inside the module's own discovery script), and
+# each pass re-splits on any semicolon regardless of escaping, silently
+# dropping every entry past the first. So the variables are set via a
+# post-discovery include file instead, using the per-test list that
+# gtest_discover_tests exports for exactly this purpose.
+function(daichod_add_daemon_tests target source)
+  add_executable(${target} ${source})
+  target_link_libraries(${target} PRIVATE daichod_proto GTest::gtest_main)
+  add_dependencies(${target} daichod daichod-mkbook)
+  gtest_discover_tests(${target})
+  set(env_file ${CMAKE_CURRENT_BINARY_DIR}/${target}_env.cmake)
+  file(GENERATE OUTPUT ${env_file} CONTENT "\
+foreach(_test IN LISTS ${target}_TESTS)
   set_tests_properties(\"\${_test}\" PROPERTIES ENVIRONMENT
     \"DAICHOD_BIN=$<TARGET_FILE:daichod>;DAICHOD_MKBOOK=$<TARGET_FILE:daichod-mkbook>\")
 endforeach()
 ")
-set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
-  ${daichod_integration_tests_env_file})
+  set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES ${env_file})
+endfunction()
 
-# AccountService end-to-end tests: same daemon-over-socket approach, kept as
-# a separate binary so it can grow independently of session_test.cpp. Needs
-# daichod_proto (not just daichod_core) for the generated stubs plus
-# google.rpc.Status for error-detail parsing.
-add_executable(daichod_account_tests
-  integration/account_test.cpp)
-target_link_libraries(daichod_account_tests
-  PRIVATE daichod_proto GTest::gtest_main)
-add_dependencies(daichod_account_tests daichod daichod-mkbook)
-gtest_discover_tests(daichod_account_tests)
-
-set(daichod_account_tests_env_file
-  ${CMAKE_CURRENT_BINARY_DIR}/daichod_account_tests_env.cmake)
-file(GENERATE OUTPUT ${daichod_account_tests_env_file} CONTENT "\
-foreach(_test IN LISTS daichod_account_tests_TESTS)
-  set_tests_properties(\"\${_test}\" PROPERTIES ENVIRONMENT
-    \"DAICHOD_BIN=$<TARGET_FILE:daichod>;DAICHOD_MKBOOK=$<TARGET_FILE:daichod-mkbook>\")
-endforeach()
-")
-set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
-  ${daichod_account_tests_env_file})
-
-# TransactionService/CommodityService/BalanceService end-to-end tests: same
-# daemon-over-socket approach, kept as a separate binary so it can grow
-# independently of account_test.cpp.
-add_executable(daichod_transaction_tests
+daichod_add_daemon_tests(daichod_integration_tests integration/session_test.cpp)
+daichod_add_daemon_tests(daichod_account_tests integration/account_test.cpp)
+daichod_add_daemon_tests(daichod_transaction_tests
   integration/transaction_test.cpp)
-target_link_libraries(daichod_transaction_tests
-  PRIVATE daichod_proto GTest::gtest_main)
-add_dependencies(daichod_transaction_tests daichod daichod-mkbook)
-gtest_discover_tests(daichod_transaction_tests)
-
-set(daichod_transaction_tests_env_file
-  ${CMAKE_CURRENT_BINARY_DIR}/daichod_transaction_tests_env.cmake)
-file(GENERATE OUTPUT ${daichod_transaction_tests_env_file} CONTENT "\
-foreach(_test IN LISTS daichod_transaction_tests_TESTS)
-  set_tests_properties(\"\${_test}\" PROPERTIES ENVIRONMENT
-    \"DAICHOD_BIN=$<TARGET_FILE:daichod>;DAICHOD_MKBOOK=$<TARGET_FILE:daichod-mkbook>\")
-endforeach()
-")
-set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
-  ${daichod_transaction_tests_env_file})
+# Crash-recovery kill matrix: DAICHOD_CRASH_AT at every protocol crash
+# point, asserting the recovery handshake converges without loss or
+# duplication.
+daichod_add_daemon_tests(daichod_crash_tests integration/crash_test.cpp)
+# Lifecycle: --backup-dir daily snapshot behavior across restarts.
+daichod_add_daemon_tests(daichod_lifecycle_tests
+  integration/lifecycle_test.cpp)

@@ -47,8 +47,11 @@ class DaemonFixture : public ::testing::Test {
     std::filesystem::remove_all(dir_);
   }
 
+  // extra_args is appended verbatim after the fixed --book-uri/--socket
+  // pair (e.g. {"--backup-dir", dir} for lifecycle tests).
   void StartDaemon(const std::string& binary,
-                   const std::vector<std::string>& extra_env = {}) {
+                   const std::vector<std::string>& extra_env = {},
+                   const std::vector<std::string>& extra_args = {}) {
     daemon_pid_ = fork();
     ASSERT_GE(daemon_pid_, 0);
     if (daemon_pid_ == 0) {
@@ -57,8 +60,15 @@ class DaemonFixture : public ::testing::Test {
         setenv(assignment.substr(0, eq).c_str(),
                assignment.substr(eq + 1).c_str(), 1);
       }
-      execl(binary.c_str(), binary.c_str(), "--book-uri", book_uri_.c_str(),
-            "--socket", socket_path_.c_str(), static_cast<char*>(nullptr));
+      std::vector<std::string> arg_storage = {
+          binary, "--book-uri", book_uri_, "--socket", socket_path_.string()};
+      arg_storage.insert(arg_storage.end(), extra_args.begin(),
+                         extra_args.end());
+      std::vector<char*> args;
+      args.reserve(arg_storage.size() + 1);
+      for (std::string& arg : arg_storage) args.push_back(arg.data());
+      args.push_back(nullptr);
+      execv(binary.c_str(), args.data());
       _exit(127);
     }
     daichod_bin_ = binary;
@@ -70,6 +80,17 @@ class DaemonFixture : public ::testing::Test {
     int status = 0;
     waitpid(daemon_pid_, &status, 0);
     daemon_pid_ = -1;
+  }
+
+  // For crash tests: the daemon has already died on its own (a crash-point
+  // abort() observed as an RPC failure) and just needs reaping, not another
+  // signal. Blocks until it has exited; returns its wait status.
+  int WaitForExit() {
+    if (daemon_pid_ <= 0) return -1;
+    int status = 0;
+    waitpid(daemon_pid_, &status, 0);
+    daemon_pid_ = -1;
+    return status;
   }
 
   // Waits for the daemon's Ping to answer; fails the test on timeout.
