@@ -7,6 +7,16 @@ lint:
     # The contract keeps its flat proto/ layout — schema and repo share one
     # home. Purely structural; does not affect the wire.
     - PACKAGE_DIRECTORY_MATCH
+    # CONTRACT.md's documented design: RPCs exchange the entity messages
+    # themselves (Account, Transaction, BookInfo, Empty, refs), not per-RPC
+    # wrapper types. buf's wrapper-naming rules are its own house style,
+    # not the protobuf.dev style guide this contract follows.
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    - RPC_REQUEST_RESPONSE_UNIQUE
+  ignore:
+    # Vendored verbatim from googleapis; never restyled.
+    - google/rpc/status.proto
 breaking:
   use:
     - WIRE_JSON

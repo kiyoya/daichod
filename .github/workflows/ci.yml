@@ -1,9 +1,10 @@
 name: CI
 
+# Single-maintainer flow: no PRs; every push to main runs the full
+# pipeline directly.
 on:
   push:
     branches: [main]
-  pull_request:
 
 jobs:
   proto:
@@ -18,11 +19,17 @@ jobs:
           version: 1.72.0
       - name: Lint contract
         run: buf lint proto
+      # daicho-api pins tagged contract releases, so the promise that must
+      # hold is "no breaking change since the latest tag". Skips until the
+      # first tag exists.
       - name: Breaking-change detection
-        if: github.event_name == 'pull_request'
-        run: >
-          buf breaking proto
-          --against ".git#branch=origin/${{ github.base_ref }},subdir=proto"
+        run: |
+          tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          if [ -n "$tag" ]; then
+            buf breaking proto --against ".git#tag=${tag},subdir=proto"
+          else
+            echo "no tags yet; skipping breaking-change detection"
+          fi
 
   build-test:
     runs-on: ubuntu-latest
