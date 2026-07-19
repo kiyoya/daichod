@@ -51,18 +51,18 @@ TransactionPlan PlanTransaction(QofBook* book, const shim::Transaction& spec,
                                 ::Transaction* existing) {
   TransactionPlan plan;
   if (!spec.has_currency()) {
-    throw ShimError(shim::INVALID_ARGUMENT_DETAIL, "currency is required",
+    throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT, "currency is required",
                     "transaction.currency");
   }
   plan.currency =
       FindCommodity(book, spec.currency(), "transaction.currency");
   if (!gnc_commodity_is_currency(plan.currency)) {
-    throw ShimError(shim::CURRENCY_MISMATCH,
+    throw ShimError(shim::ERROR_CODE_CURRENCY_MISMATCH,
                     "transaction currency is not a currency commodity",
                     "transaction.currency");
   }
   if (!spec.has_post_date()) {
-    throw ShimError(shim::INVALID_ARGUMENT_DETAIL, "post_date is required",
+    throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT, "post_date is required",
                     "transaction.post_date");
   }
   plan.post_date = DateFromProto(spec.post_date(), "transaction.post_date");
@@ -75,7 +75,7 @@ TransactionPlan PlanTransaction(QofBook* book, const shim::Transaction& spec,
   plan.description = spec.description();
 
   if (spec.splits().empty()) {
-    throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+    throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                     "at least one split is required", "transaction.splits");
   }
 
@@ -102,20 +102,20 @@ TransactionPlan PlanTransaction(QofBook* book, const shim::Transaction& spec,
     SplitPlan split_plan;
     if (!split_spec.guid().empty()) {
       if (existing == nullptr) {
-        throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+        throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                         "split guid must be empty on create; the engine "
                         "assigns",
                         field + ".guid");
       }
       const auto found = engine_splits.find(split_spec.guid());
       if (found == engine_splits.end()) {
-        throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+        throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                         "split " + split_spec.guid() +
                             " does not belong to this transaction",
                         field + ".guid");
       }
       if (!claimed.insert(split_spec.guid()).second) {
-        throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+        throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                         "split " + split_spec.guid() + " appears twice",
                         field + ".guid");
       }
@@ -137,7 +137,7 @@ TransactionPlan PlanTransaction(QofBook* book, const shim::Transaction& spec,
     sum = gnc_numeric_add(sum, split_plan.value, GNC_DENOM_AUTO,
                           GNC_HOW_DENOM_LCD);
     if (gnc_numeric_check(sum) != GNC_ERROR_OK) {
-      throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+      throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                       "split values overflow engine arithmetic", field);
     }
     plan.splits.push_back(std::move(split_plan));
@@ -148,7 +148,7 @@ TransactionPlan PlanTransaction(QofBook* book, const shim::Transaction& spec,
     const std::string message =
         "split values sum to " + std::string(sum_str) + ", expected zero";
     g_free(sum_str);
-    throw ShimError(shim::UNBALANCED_TRANSACTION, message,
+    throw ShimError(shim::ERROR_CODE_UNBALANCED_TRANSACTION, message,
                     "transaction.splits");
   }
 
@@ -187,13 +187,13 @@ cleared_match_t ClearedMaskFromStates(
   int mask = 0;
   for (const int state : states) {
     switch (static_cast<shim::ReconcileState>(state)) {
-      case shim::NOT_RECONCILED: mask |= CLEARED_NO; break;
-      case shim::CLEARED:        mask |= CLEARED_CLEARED; break;
-      case shim::RECONCILED:     mask |= CLEARED_RECONCILED; break;
-      case shim::FROZEN:         mask |= CLEARED_FROZEN; break;
-      case shim::VOIDED:         mask |= CLEARED_VOIDED; break;
+      case shim::RECONCILE_STATE_NOT_RECONCILED: mask |= CLEARED_NO; break;
+      case shim::RECONCILE_STATE_CLEARED:        mask |= CLEARED_CLEARED; break;
+      case shim::RECONCILE_STATE_RECONCILED:     mask |= CLEARED_RECONCILED; break;
+      case shim::RECONCILE_STATE_FROZEN:         mask |= CLEARED_FROZEN; break;
+      case shim::RECONCILE_STATE_VOIDED:         mask |= CLEARED_VOIDED; break;
       default:
-        throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+        throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                         "unspecified reconcile state", "states");
     }
   }
@@ -224,7 +224,7 @@ grpc::Status TransactionServiceImpl::PostTransaction(
                       const PendingRecorder& record_pending) {
         const shim::Transaction& spec = request->transaction();
         if (!spec.guid().empty()) {
-          throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+          throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                           "guid must be empty on create; the engine assigns",
                           "transaction.guid");
         }
@@ -249,7 +249,7 @@ grpc::Status TransactionServiceImpl::UpdateTransaction(
                       const PendingRecorder& record_pending) {
         const shim::Transaction& spec = request->transaction();
         if (spec.guid().empty()) {
-          throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+          throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                           "guid is required on update", "transaction.guid");
         }
         QofBook* book = session_->book();
@@ -405,7 +405,7 @@ grpc::Status TransactionServiceImpl::QuerySplits(
     qof_query_destroy(query);
 
     if (skipping && !token_seen) {
-      throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+      throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                       "page_token does not match any current result",
                       "page_token");
     }

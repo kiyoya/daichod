@@ -114,7 +114,7 @@ TEST_F(MutationTest, RecordedFailureReplaysWithoutCallingApplyAgain) {
   int apply_calls = 0;
   auto apply = [&](shim::Transaction*, const PendingRecorder&) {
     ++apply_calls;
-    throw ShimError(shim::UNBALANCED_TRANSACTION, "splits do not sum to zero");
+    throw ShimError(shim::ERROR_CODE_UNBALANCED_TRANSACTION, "splits do not sum to zero");
   };
 
   shim::Transaction first_response;

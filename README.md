@@ -9,7 +9,7 @@ A small C++ daemon that links libgnucash and serves a gRPC contract over a Unix 
 
 **Status:** under implementation, following the design documents.
 
-**Code style:** C++ follows the [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
+**Code style:** C++ follows the [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html); protocol buffers follow the [Protobuf Style Guide](https://protobuf.dev/programming-guides/style/).
 
 ## Building
 
@@ -21,10 +21,11 @@ is engine-agnostic — use wslc, docker, or podman interchangeably:
 # Development image (toolchain + GnuCash under /opt/gnucash):
 <engine> build --target dev -t daichod-dev .
 
-# Configure, build, and test with the repo bind-mounted:
+# Configure, build, and test with the repo bind-mounted. ccache warms
+# .ccache/ in the repo across runs; tests are isolated and run in parallel:
 <engine> run --rm -v .:/src daichod-dev cmake -S /src -B /src/build -G Ninja
 <engine> run --rm -v .:/src daichod-dev cmake --build /src/build
-<engine> run --rm -v .:/src daichod-dev ctest --test-dir /src/build --output-on-failure
+<engine> run --rm -v .:/src daichod-dev ctest --test-dir /src/build/test -j "$(nproc)" --output-on-failure
 
 # Deliverable runtime image:
 <engine> build --target runtime -t daichod .

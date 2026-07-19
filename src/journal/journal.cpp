@@ -12,7 +12,7 @@ namespace shim = daicho::shim::v1;
 namespace {
 
 [[noreturn]] void ThrowSqlite(sqlite3* db, const std::string& context) {
-  throw ShimError(shim::ENGINE_ERROR,
+  throw ShimError(shim::ERROR_CODE_ENGINE_ERROR,
                   std::string("journal: ") + sqlite3_errmsg(db), context);
 }
 
@@ -22,7 +22,7 @@ void Exec(sqlite3* db, const char* sql) {
     std::string message =
         error_message != nullptr ? error_message : "unknown sqlite error";
     sqlite3_free(error_message);
-    throw ShimError(shim::ENGINE_ERROR, "journal: " + message, sql);
+    throw ShimError(shim::ERROR_CODE_ENGINE_ERROR, "journal: " + message, sql);
   }
 }
 
@@ -110,7 +110,7 @@ std::unique_ptr<Journal> Journal::Open(const std::string& path) {
     const std::string message =
         db != nullptr ? sqlite3_errmsg(db) : "cannot allocate sqlite handle";
     sqlite3_close(db);
-    throw ShimError(shim::ENGINE_ERROR, "journal: " + message, path);
+    throw ShimError(shim::ERROR_CODE_ENGINE_ERROR, "journal: " + message, path);
   }
   auto journal = std::unique_ptr<Journal>(new Journal(db));
   // WAL keeps the fsync cost of the two-writes-per-mutation protocol sane;
@@ -159,7 +159,7 @@ std::optional<internal::Outcome> Journal::GetOutcome(
   if (!stmt.Step()) return std::nullopt;
   internal::Outcome outcome;
   if (!outcome.ParseFromString(stmt.ColumnBlob(0))) {
-    throw ShimError(shim::ENGINE_ERROR,
+    throw ShimError(shim::ERROR_CODE_ENGINE_ERROR,
                     "journal: corrupt outcome record", mutation_id);
   }
   return outcome;

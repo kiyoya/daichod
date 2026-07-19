@@ -112,13 +112,13 @@ TEST_F(GoldenTest, DesktopAgreesWithShim) {
   const std::string root = info.root_account_guid();
 
   const std::string checking =
-      CreateAccount(accounts.get(), root, "Checking", shim::BANK,
+      CreateAccount(accounts.get(), root, "Checking", shim::ACCOUNT_TYPE_BANK,
                     "00000000-0000-4000-8000-00000000a001");
   const std::string salary =
-      CreateAccount(accounts.get(), root, "Salary", shim::INCOME,
+      CreateAccount(accounts.get(), root, "Salary", shim::ACCOUNT_TYPE_INCOME,
                     "00000000-0000-4000-8000-00000000a002");
   const std::string groceries =
-      CreateAccount(accounts.get(), root, "Groceries", shim::EXPENSE,
+      CreateAccount(accounts.get(), root, "Groceries", shim::ACCOUNT_TYPE_EXPENSE,
                     "00000000-0000-4000-8000-00000000a003");
 
   PostSimple(transactions.get(), checking, salary, 250000, "July salary",

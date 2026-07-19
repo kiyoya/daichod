@@ -34,9 +34,9 @@ class CrashTest : public DaemonFixture {
     ConnectStubs();
     const std::string root_guid = RootGuid();
     asset_guid_ =
-        CreateAccount(NextMutationId(), root_guid, "A", shim::ASSET).guid();
+        CreateAccount(NextMutationId(), root_guid, "A", shim::ACCOUNT_TYPE_ASSET).guid();
     expense_guid_ =
-        CreateAccount(NextMutationId(), root_guid, "E", shim::EXPENSE).guid();
+        CreateAccount(NextMutationId(), root_guid, "E", shim::ACCOUNT_TYPE_EXPENSE).guid();
   }
 
   void ConnectStubs() {
@@ -56,7 +56,7 @@ class CrashTest : public DaemonFixture {
     EXPECT_TRUE(
         account_stub_->ListAccounts(&context, request, &response).ok());
     for (const auto& account : response.accounts()) {
-      if (account.type() == shim::ROOT) return account.guid();
+      if (account.type() == shim::ACCOUNT_TYPE_ROOT) return account.guid();
     }
     ADD_FAILURE() << "no root account in ListAccounts response";
     return "";

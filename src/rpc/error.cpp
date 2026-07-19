@@ -27,22 +27,22 @@ grpc::Status PackStatus(grpc::StatusCode grpc_code, shim::ErrorCode code,
 
 grpc::StatusCode GrpcCodeFor(shim::ErrorCode code) {
   switch (code) {
-    case shim::ACCOUNT_NOT_FOUND:
-    case shim::TXN_NOT_FOUND:
-    case shim::COMMODITY_NOT_FOUND:
+    case shim::ERROR_CODE_ACCOUNT_NOT_FOUND:
+    case shim::ERROR_CODE_TXN_NOT_FOUND:
+    case shim::ERROR_CODE_COMMODITY_NOT_FOUND:
       return grpc::StatusCode::NOT_FOUND;
-    case shim::UNBALANCED_TRANSACTION:
-    case shim::CURRENCY_MISMATCH:
-    case shim::ACCOUNT_NOT_EMPTY:
-    case shim::READ_ONLY_BOOK:
-    case shim::INDETERMINATE_MUTATION:
+    case shim::ERROR_CODE_UNBALANCED_TRANSACTION:
+    case shim::ERROR_CODE_CURRENCY_MISMATCH:
+    case shim::ERROR_CODE_ACCOUNT_NOT_EMPTY:
+    case shim::ERROR_CODE_READ_ONLY_BOOK:
+    case shim::ERROR_CODE_INDETERMINATE_MUTATION:
       return grpc::StatusCode::FAILED_PRECONDITION;
-    case shim::BOOK_LOCKED:
-    case shim::BOOK_NOT_OPEN:
+    case shim::ERROR_CODE_BOOK_LOCKED:
+    case shim::ERROR_CODE_BOOK_NOT_OPEN:
       return grpc::StatusCode::UNAVAILABLE;
-    case shim::INVALID_ARGUMENT_DETAIL:
+    case shim::ERROR_CODE_INVALID_ARGUMENT:
       return grpc::StatusCode::INVALID_ARGUMENT;
-    case shim::ENGINE_ERROR:
+    case shim::ERROR_CODE_ENGINE_ERROR:
     default:
       return grpc::StatusCode::INTERNAL;
   }
@@ -75,7 +75,7 @@ grpc::Status StatusFromException(const std::exception& e) {
   }
   // Non-ShimError exceptions are internal bugs; still emit a typed detail so
   // the client never has to parse free text.
-  return ShimError(shim::ENGINE_ERROR, e.what()).ToStatus();
+  return ShimError(shim::ERROR_CODE_ENGINE_ERROR, e.what()).ToStatus();
 }
 
 }  // namespace daichod

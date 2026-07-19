@@ -12,7 +12,7 @@ The protobuf contract between daichod and daicho-api. It lives in the **daichod 
 
 **Idempotent mutations.** Every mutating RPC carries `MutationMeta { mutation_id }`, a client-generated UUIDv4. Re-sending an applied ID returns the recorded outcome. This is the wire half of the system-wide double-post defense (see daicho-api.md for the client half, daichod.md for the journal half).
 
-**Typed errors, verbatim engine text.** Failures carry `ErrorDetail { code, engine_message, context }` in gRPC status details. The code enum is closed and small (`UNBALANCED_TRANSACTION`, `ACCOUNT_NOT_FOUND`, `CURRENCY_MISMATCH`, …); the engine's own message is always preserved unmodified. The shim never interprets, only classifies.
+**Typed errors, verbatim engine text.** Failures carry `ErrorDetail { code, engine_message, context }` in gRPC status details. The code enum is closed and small (`ERROR_CODE_UNBALANCED_TRANSACTION`, `ERROR_CODE_ACCOUNT_NOT_FOUND`, `ERROR_CODE_CURRENCY_MISMATCH`, …); the engine's own message is always preserved unmodified. The shim never interprets, only classifies.
 
 **Full-replacement updates.** `UpdateTransaction` and `UpdateAccount` take the complete desired entity; the shim diffs and applies inside one engine edit. Partial-update field masks were rejected as a source of merge ambiguity in a financial record.
 

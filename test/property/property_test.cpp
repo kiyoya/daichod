@@ -48,9 +48,9 @@ TEST_P(PropertyTest, RandomBalancedTransactionsHoldInvariants) {
   }
 
   // A small random forest of accounts.
-  const shim::AccountType kTypes[] = {shim::ASSET, shim::BANK, shim::EXPENSE,
-                                      shim::INCOME, shim::LIABILITY,
-                                      shim::EQUITY};
+  const shim::AccountType kTypes[] = {shim::ACCOUNT_TYPE_ASSET, shim::ACCOUNT_TYPE_BANK, shim::ACCOUNT_TYPE_EXPENSE,
+                                      shim::ACCOUNT_TYPE_INCOME, shim::ACCOUNT_TYPE_LIABILITY,
+                                      shim::ACCOUNT_TYPE_EQUITY};
   std::vector<std::string> account_guids;
   const int account_count = 3 + static_cast<int>(rng() % 5);
   for (int i = 0; i < account_count; ++i) {

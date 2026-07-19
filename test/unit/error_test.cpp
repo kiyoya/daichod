@@ -14,11 +14,11 @@ namespace {
 namespace shim = daicho::shim::v1;
 
 TEST(ErrorTest, GrpcCodeForMappings) {
-  EXPECT_EQ(GrpcCodeFor(shim::ACCOUNT_NOT_FOUND), grpc::StatusCode::NOT_FOUND);
-  EXPECT_EQ(GrpcCodeFor(shim::BOOK_LOCKED), grpc::StatusCode::UNAVAILABLE);
-  EXPECT_EQ(GrpcCodeFor(shim::UNBALANCED_TRANSACTION),
+  EXPECT_EQ(GrpcCodeFor(shim::ERROR_CODE_ACCOUNT_NOT_FOUND), grpc::StatusCode::NOT_FOUND);
+  EXPECT_EQ(GrpcCodeFor(shim::ERROR_CODE_BOOK_LOCKED), grpc::StatusCode::UNAVAILABLE);
+  EXPECT_EQ(GrpcCodeFor(shim::ERROR_CODE_UNBALANCED_TRANSACTION),
             grpc::StatusCode::FAILED_PRECONDITION);
-  EXPECT_EQ(GrpcCodeFor(shim::INVALID_ARGUMENT_DETAIL),
+  EXPECT_EQ(GrpcCodeFor(shim::ERROR_CODE_INVALID_ARGUMENT),
             grpc::StatusCode::INVALID_ARGUMENT);
 }
 
@@ -34,7 +34,7 @@ shim::ErrorDetail UnpackDetail(const grpc::Status& status) {
 }
 
 TEST(ErrorTest, ToStatusRoundTrip) {
-  const ShimError error(shim::ACCOUNT_NOT_FOUND, "no such account",
+  const ShimError error(shim::ERROR_CODE_ACCOUNT_NOT_FOUND, "no such account",
                         "guid=3d1c5e0cf3244e33aeb1dc327e16ca0f");
   const grpc::Status status = error.ToStatus();
 
@@ -42,19 +42,19 @@ TEST(ErrorTest, ToStatusRoundTrip) {
   EXPECT_EQ(status.error_message(), "no such account");
 
   const shim::ErrorDetail detail = UnpackDetail(status);
-  EXPECT_EQ(detail.code(), shim::ACCOUNT_NOT_FOUND);
+  EXPECT_EQ(detail.code(), shim::ERROR_CODE_ACCOUNT_NOT_FOUND);
   EXPECT_EQ(detail.engine_message(), "no such account");
   EXPECT_EQ(detail.context(), "guid=3d1c5e0cf3244e33aeb1dc327e16ca0f");
 }
 
 TEST(ErrorTest, ToStatusRoundTripPreservesEmptyContext) {
-  const ShimError error(shim::BOOK_LOCKED, "backend locked");
+  const ShimError error(shim::ERROR_CODE_BOOK_LOCKED, "backend locked");
   const grpc::Status status = error.ToStatus();
 
   EXPECT_EQ(status.error_code(), grpc::StatusCode::UNAVAILABLE);
 
   const shim::ErrorDetail detail = UnpackDetail(status);
-  EXPECT_EQ(detail.code(), shim::BOOK_LOCKED);
+  EXPECT_EQ(detail.code(), shim::ERROR_CODE_BOOK_LOCKED);
   EXPECT_EQ(detail.engine_message(), "backend locked");
   EXPECT_EQ(detail.context(), "");
 }
@@ -67,17 +67,17 @@ TEST(ErrorTest, StatusFromExceptionRuntimeErrorIsInternalEngineError) {
   EXPECT_EQ(status.error_message(), "boom");
 
   const shim::ErrorDetail detail = UnpackDetail(status);
-  EXPECT_EQ(detail.code(), shim::ENGINE_ERROR);
+  EXPECT_EQ(detail.code(), shim::ERROR_CODE_ENGINE_ERROR);
   EXPECT_EQ(detail.engine_message(), "boom");
 }
 
 TEST(ErrorTest, StatusFromExceptionShimErrorUsesMappedCode) {
-  const ShimError error(shim::UNBALANCED_TRANSACTION, "splits do not sum to zero");
+  const ShimError error(shim::ERROR_CODE_UNBALANCED_TRANSACTION, "splits do not sum to zero");
   const grpc::Status status = StatusFromException(error);
 
   EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   const shim::ErrorDetail detail = UnpackDetail(status);
-  EXPECT_EQ(detail.code(), shim::UNBALANCED_TRANSACTION);
+  EXPECT_EQ(detail.code(), shim::ERROR_CODE_UNBALANCED_TRANSACTION);
 }
 
 }  // namespace

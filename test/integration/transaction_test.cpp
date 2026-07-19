@@ -86,10 +86,10 @@ class TransactionServiceTest : public DaemonFixture {
 
     root_guid_ = RootGuid();
     asset_guid_ =
-        CreateAccount(NextMutationId(), root_guid_, "Asset", shim::ASSET)
+        CreateAccount(NextMutationId(), root_guid_, "Asset", shim::ACCOUNT_TYPE_ASSET)
             .guid();
     expense_guid_ =
-        CreateAccount(NextMutationId(), root_guid_, "Expense", shim::EXPENSE)
+        CreateAccount(NextMutationId(), root_guid_, "Expense", shim::ACCOUNT_TYPE_EXPENSE)
             .guid();
   }
 
@@ -101,7 +101,7 @@ class TransactionServiceTest : public DaemonFixture {
     shim::AccountList response;
     EXPECT_TRUE(account_stub_->ListAccounts(&context, request, &response).ok());
     for (const auto& account : response.accounts()) {
-      if (account.type() == shim::ROOT) return account.guid();
+      if (account.type() == shim::ACCOUNT_TYPE_ROOT) return account.guid();
     }
     ADD_FAILURE() << "no root account in ListAccounts response";
     return "";
@@ -322,7 +322,7 @@ TEST_F(TransactionServiceTest, PostUnbalancedTransactionRejectedFailedPreconditi
       txn_stub_->PostTransaction(&context, request, &response);
   EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   const shim::ErrorDetail detail = UnpackDetail(status);
-  EXPECT_EQ(detail.code(), shim::UNBALANCED_TRANSACTION);
+  EXPECT_EQ(detail.code(), shim::ERROR_CODE_UNBALANCED_TRANSACTION);
 }
 
 TEST_F(TransactionServiceTest, PostTransactionRejectsUnknownAccount) {
@@ -370,7 +370,7 @@ TEST_F(TransactionServiceTest, PostTransactionRejectsUnknownCurrency) {
       txn_stub_->PostTransaction(&context, request, &response);
   EXPECT_EQ(status.error_code(), grpc::StatusCode::NOT_FOUND);
   const shim::ErrorDetail detail = UnpackDetail(status);
-  EXPECT_EQ(detail.code(), shim::COMMODITY_NOT_FOUND);
+  EXPECT_EQ(detail.code(), shim::ERROR_CODE_COMMODITY_NOT_FOUND);
 }
 
 // ----------------------------------------------------------- UpdateTransaction
@@ -425,7 +425,7 @@ TEST_F(TransactionServiceTest, UpdateTransactionChangesDescriptionAndAmountsKeep
 
 TEST_F(TransactionServiceTest, UpdateTransactionReplacesOneSplitAndDropsAnother) {
   const std::string expense2_guid =
-      CreateAccount(NextMutationId(), root_guid_, "Expense2", shim::EXPENSE)
+      CreateAccount(NextMutationId(), root_guid_, "Expense2", shim::ACCOUNT_TYPE_EXPENSE)
           .guid();
   const shim::Transaction original =
       PostTxn(NextMutationId(), "Original2", MakeDate(2026, 7, 2),
@@ -521,7 +521,7 @@ TEST_F(TransactionServiceTest, UpdateTransactionUnbalancedLeavesOriginalUnchange
       txn_stub_->UpdateTransaction(&context, request, &response);
   EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   const shim::ErrorDetail detail = UnpackDetail(status);
-  EXPECT_EQ(detail.code(), shim::UNBALANCED_TRANSACTION);
+  EXPECT_EQ(detail.code(), shim::ERROR_CODE_UNBALANCED_TRANSACTION);
 
   const shim::Transaction reread = GetTransaction(original.guid());
   EXPECT_EQ(reread.description(), "Stays");
@@ -570,7 +570,7 @@ TEST_F(TransactionServiceTest, DeleteTransactionRemovesAndIsIdempotent) {
 
 TEST_F(TransactionServiceTest, QuerySplitsFiltersByAccountDateDescriptionAndPaginates) {
   const std::string expense2_guid =
-      CreateAccount(NextMutationId(), root_guid_, "Expense2", shim::EXPENSE)
+      CreateAccount(NextMutationId(), root_guid_, "Expense2", shim::ACCOUNT_TYPE_EXPENSE)
           .guid();
 
   PostTxn(NextMutationId(), "Groceries weekly", MakeDate(2026, 7, 1),
@@ -660,7 +660,7 @@ TEST_F(TransactionServiceTest, QuerySplitsFiltersByAccountDateDescriptionAndPagi
   // Every split defaults to NOT_RECONCILED: the filter matches all 10.
   {
     shim::QuerySplitsRequest request;
-    request.add_states(shim::NOT_RECONCILED);
+    request.add_states(shim::RECONCILE_STATE_NOT_RECONCILED);
     const shim::QuerySplitsResponse response = QuerySplits(request);
     EXPECT_EQ(response.splits_size(), 10);
   }
@@ -693,10 +693,10 @@ TEST_F(TransactionServiceTest, GetBalanceSumsPostedTransactionsAndRespectsAsOf) 
 
 TEST_F(TransactionServiceTest, GetBalanceIncludesChildrenWhenRequested) {
   const std::string parent_guid =
-      CreateAccount(NextMutationId(), root_guid_, "Parent", shim::ASSET)
+      CreateAccount(NextMutationId(), root_guid_, "Parent", shim::ACCOUNT_TYPE_ASSET)
           .guid();
   const std::string child_guid =
-      CreateAccount(NextMutationId(), parent_guid, "Child", shim::ASSET)
+      CreateAccount(NextMutationId(), parent_guid, "Child", shim::ACCOUNT_TYPE_ASSET)
           .guid();
   PostTxn(NextMutationId(), "IntoChild", MakeDate(2026, 7, 1),
          {{"", child_guid, 700, 100}, {"", expense_guid_, -700, 100}});

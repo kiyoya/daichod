@@ -32,7 +32,7 @@ TEST(MapTest, StringToGuidRejectsGarbage) {
     StringToGuid("not-a-valid-guid", "some_field");
   } catch (const ShimError& e) {
     threw = true;
-    EXPECT_EQ(e.code(), daicho::shim::v1::INVALID_ARGUMENT_DETAIL);
+    EXPECT_EQ(e.code(), daicho::shim::v1::ERROR_CODE_INVALID_ARGUMENT);
     EXPECT_EQ(e.context(), "some_field");
   }
   EXPECT_TRUE(threw) << "StringToGuid should throw ShimError on malformed input";

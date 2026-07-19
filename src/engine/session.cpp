@@ -48,12 +48,12 @@ ShimError BackendError(QofBackendError error, const char* engine_message,
           : "backend error " + std::to_string(static_cast<int>(error));
   switch (error) {
     case ERR_BACKEND_LOCKED:
-      return ShimError(shim::BOOK_LOCKED, message, uri);
+      return ShimError(shim::ERROR_CODE_BOOK_LOCKED, message, uri);
     case ERR_BACKEND_READONLY:
     case ERR_BACKEND_PERM:
-      return ShimError(shim::READ_ONLY_BOOK, message, uri);
+      return ShimError(shim::ERROR_CODE_READ_ONLY_BOOK, message, uri);
     default:
-      return ShimError(shim::ENGINE_ERROR, message, uri);
+      return ShimError(shim::ERROR_CODE_ENGINE_ERROR, message, uri);
   }
 }
 
@@ -83,7 +83,7 @@ void Session::Open() {
   if (session_ != nullptr) return;  // administrative reopen is idempotent
 
   if (!HasSupportedScheme(config_.book_uri)) {
-    throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+    throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                     "unsupported book URI scheme; only sqlite3:// and "
                     "postgres:// books are crash-safe",
                     config_.book_uri);
@@ -146,7 +146,7 @@ void Session::Close() {
 
 QofBook* Session::book() const {
   if (session_ == nullptr) {
-    throw ShimError(shim::BOOK_NOT_OPEN, "no book is open");
+    throw ShimError(shim::ERROR_CODE_BOOK_NOT_OPEN, "no book is open");
   }
   return qof_session_get_book(session_);
 }
@@ -181,13 +181,13 @@ void Session::RunStartupChecks() const {
   qof_query_destroy(query);
 
   if (!imbalanced_txn.empty()) {
-    throw ShimError(shim::ENGINE_ERROR,
+    throw ShimError(shim::ERROR_CODE_ENGINE_ERROR,
                     "startup check failed: imbalanced transaction",
                     imbalanced_txn);
   }
   for (const auto& [currency, sum] : sums) {
     if (!gnc_numeric_zero_p(sum)) {
-      throw ShimError(shim::ENGINE_ERROR,
+      throw ShimError(shim::ERROR_CODE_ENGINE_ERROR,
                       "startup check failed: trial balance is nonzero",
                       currency);
     }

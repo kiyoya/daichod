@@ -113,7 +113,7 @@ grpc::Status CommodityServiceImpl::AddPrice(grpc::ServerContext*,
                       const PendingRecorder& record_pending) {
         const shim::Price& spec = request->price();
         if (!spec.guid().empty()) {
-          throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+          throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                           "guid must be empty on create; the engine assigns",
                           "price.guid");
         }
@@ -123,12 +123,12 @@ grpc::Status CommodityServiceImpl::AddPrice(grpc::ServerContext*,
         gnc_commodity* currency =
             FindCommodity(book, spec.currency(), "price.currency");
         if (!gnc_commodity_is_currency(currency)) {
-          throw ShimError(shim::CURRENCY_MISMATCH,
+          throw ShimError(shim::ERROR_CODE_CURRENCY_MISMATCH,
                           "price currency is not a currency commodity",
                           "price.currency");
         }
         if (!spec.has_date()) {
-          throw ShimError(shim::INVALID_ARGUMENT_DETAIL, "date is required",
+          throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT, "date is required",
                           "price.date");
         }
         const GDate date = DateFromProto(spec.date(), "price.date");
@@ -179,7 +179,7 @@ grpc::Status BalanceServiceImpl::GetBalance(grpc::ServerContext*,
             ? FindCommodity(book, request->convert_to(), "convert_to")
             : xaccAccountGetCommodity(account);
     if (target == nullptr) {
-      throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+      throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                       "account has no commodity and convert_to is unset",
                       request->account_guid());
     }

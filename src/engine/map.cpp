@@ -17,7 +17,7 @@ std::string GuidToString(const GncGUID* guid) {
 GncGUID StringToGuid(const std::string& text, const std::string& context) {
   GncGUID guid;
   if (!string_to_guid(text.c_str(), &guid)) {
-    throw ShimError(shim::INVALID_ARGUMENT_DETAIL, "malformed GUID: " + text,
+    throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT, "malformed GUID: " + text,
                     context);
   }
   return guid;
@@ -37,7 +37,7 @@ std::string RedactUri(const std::string& uri) {
 gnc_numeric NumericFromProto(const shim::Numeric& numeric,
                              const std::string& context) {
   if (numeric.denom() <= 0) {
-    throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+    throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                     "Numeric.denom must be > 0", context);
   }
   return gnc_numeric_create(numeric.num(), numeric.denom());
@@ -52,7 +52,7 @@ GDate DateFromProto(const shim::Date& date, const std::string& context) {
   if (!g_date_valid_dmy(static_cast<GDateDay>(date.day()),
                         static_cast<GDateMonth>(date.month()),
                         static_cast<GDateYear>(date.year()))) {
-    throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+    throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                     "invalid calendar date " + std::to_string(date.year()) +
                         "-" + std::to_string(date.month()) + "-" +
                         std::to_string(date.day()),
@@ -78,7 +78,7 @@ gnc_commodity* FindCommodity(QofBook* book, const shim::CommodityId& id,
   gnc_commodity* commodity = gnc_commodity_table_lookup(
       table, id.space().c_str(), id.mnemonic().c_str());
   if (commodity == nullptr) {
-    throw ShimError(shim::COMMODITY_NOT_FOUND,
+    throw ShimError(shim::ERROR_CODE_COMMODITY_NOT_FOUND,
                     "no commodity {" + id.space() + ", " + id.mnemonic() + "}",
                     context);
   }
@@ -96,7 +96,7 @@ void CommodityIdToProto(const gnc_commodity* commodity,
   const GncGUID parsed = StringToGuid(guid, context);
   ::Account* account = xaccAccountLookup(&parsed, book);
   if (account == nullptr) {
-    throw ShimError(shim::ACCOUNT_NOT_FOUND, "no account " + guid, context);
+    throw ShimError(shim::ERROR_CODE_ACCOUNT_NOT_FOUND, "no account " + guid, context);
   }
   return account;
 }
@@ -104,46 +104,46 @@ void CommodityIdToProto(const gnc_commodity* commodity,
 GNCAccountType AccountTypeFromProto(shim::AccountType type,
                                     const std::string& context) {
   switch (type) {
-    case shim::ASSET:      return ACCT_TYPE_ASSET;
-    case shim::BANK:       return ACCT_TYPE_BANK;
-    case shim::CASH:       return ACCT_TYPE_CASH;
-    case shim::CREDIT:     return ACCT_TYPE_CREDIT;
-    case shim::LIABILITY:  return ACCT_TYPE_LIABILITY;
-    case shim::EQUITY:     return ACCT_TYPE_EQUITY;
-    case shim::INCOME:     return ACCT_TYPE_INCOME;
-    case shim::EXPENSE:    return ACCT_TYPE_EXPENSE;
-    case shim::STOCK:      return ACCT_TYPE_STOCK;
-    case shim::MUTUAL:     return ACCT_TYPE_MUTUAL;
-    case shim::RECEIVABLE: return ACCT_TYPE_RECEIVABLE;
-    case shim::PAYABLE:    return ACCT_TYPE_PAYABLE;
-    case shim::TRADING:    return ACCT_TYPE_TRADING;
-    case shim::ROOT:
+    case shim::ACCOUNT_TYPE_ASSET:      return ACCT_TYPE_ASSET;
+    case shim::ACCOUNT_TYPE_BANK:       return ACCT_TYPE_BANK;
+    case shim::ACCOUNT_TYPE_CASH:       return ACCT_TYPE_CASH;
+    case shim::ACCOUNT_TYPE_CREDIT:     return ACCT_TYPE_CREDIT;
+    case shim::ACCOUNT_TYPE_LIABILITY:  return ACCT_TYPE_LIABILITY;
+    case shim::ACCOUNT_TYPE_EQUITY:     return ACCT_TYPE_EQUITY;
+    case shim::ACCOUNT_TYPE_INCOME:     return ACCT_TYPE_INCOME;
+    case shim::ACCOUNT_TYPE_EXPENSE:    return ACCT_TYPE_EXPENSE;
+    case shim::ACCOUNT_TYPE_STOCK:      return ACCT_TYPE_STOCK;
+    case shim::ACCOUNT_TYPE_MUTUAL:     return ACCT_TYPE_MUTUAL;
+    case shim::ACCOUNT_TYPE_RECEIVABLE: return ACCT_TYPE_RECEIVABLE;
+    case shim::ACCOUNT_TYPE_PAYABLE:    return ACCT_TYPE_PAYABLE;
+    case shim::ACCOUNT_TYPE_TRADING:    return ACCT_TYPE_TRADING;
+    case shim::ACCOUNT_TYPE_ROOT:
       // The root account exists exactly once and is never created or
       // retyped through the contract.
-      throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+      throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                       "ROOT is not a settable account type", context);
     default:
-      throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+      throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                       "unspecified account type", context);
   }
 }
 
 shim::AccountType AccountTypeToProto(GNCAccountType type) {
   switch (type) {
-    case ACCT_TYPE_ASSET:      return shim::ASSET;
-    case ACCT_TYPE_BANK:       return shim::BANK;
-    case ACCT_TYPE_CASH:       return shim::CASH;
-    case ACCT_TYPE_CREDIT:     return shim::CREDIT;
-    case ACCT_TYPE_LIABILITY:  return shim::LIABILITY;
-    case ACCT_TYPE_EQUITY:     return shim::EQUITY;
-    case ACCT_TYPE_INCOME:     return shim::INCOME;
-    case ACCT_TYPE_EXPENSE:    return shim::EXPENSE;
-    case ACCT_TYPE_STOCK:      return shim::STOCK;
-    case ACCT_TYPE_MUTUAL:     return shim::MUTUAL;
-    case ACCT_TYPE_RECEIVABLE: return shim::RECEIVABLE;
-    case ACCT_TYPE_PAYABLE:    return shim::PAYABLE;
-    case ACCT_TYPE_TRADING:    return shim::TRADING;
-    case ACCT_TYPE_ROOT:       return shim::ROOT;
+    case ACCT_TYPE_ASSET:      return shim::ACCOUNT_TYPE_ASSET;
+    case ACCT_TYPE_BANK:       return shim::ACCOUNT_TYPE_BANK;
+    case ACCT_TYPE_CASH:       return shim::ACCOUNT_TYPE_CASH;
+    case ACCT_TYPE_CREDIT:     return shim::ACCOUNT_TYPE_CREDIT;
+    case ACCT_TYPE_LIABILITY:  return shim::ACCOUNT_TYPE_LIABILITY;
+    case ACCT_TYPE_EQUITY:     return shim::ACCOUNT_TYPE_EQUITY;
+    case ACCT_TYPE_INCOME:     return shim::ACCOUNT_TYPE_INCOME;
+    case ACCT_TYPE_EXPENSE:    return shim::ACCOUNT_TYPE_EXPENSE;
+    case ACCT_TYPE_STOCK:      return shim::ACCOUNT_TYPE_STOCK;
+    case ACCT_TYPE_MUTUAL:     return shim::ACCOUNT_TYPE_MUTUAL;
+    case ACCT_TYPE_RECEIVABLE: return shim::ACCOUNT_TYPE_RECEIVABLE;
+    case ACCT_TYPE_PAYABLE:    return shim::ACCOUNT_TYPE_PAYABLE;
+    case ACCT_TYPE_TRADING:    return shim::ACCOUNT_TYPE_TRADING;
+    case ACCT_TYPE_ROOT:       return shim::ACCOUNT_TYPE_ROOT;
     default:
       // Obsolete engine types (CURRENCY, CHECKING, ...) that the contract
       // deliberately does not model.
@@ -167,7 +167,7 @@ void ReconcileInfoToProto(::Account* account, shim::ReconcileInfo* out) {
   const GncGUID parsed = StringToGuid(guid, context);
   ::Transaction* transaction = xaccTransLookup(&parsed, book);
   if (transaction == nullptr) {
-    throw ShimError(shim::TXN_NOT_FOUND, "no transaction " + guid, context);
+    throw ShimError(shim::ERROR_CODE_TXN_NOT_FOUND, "no transaction " + guid, context);
   }
   return transaction;
 }
@@ -175,24 +175,24 @@ void ReconcileInfoToProto(::Account* account, shim::ReconcileInfo* out) {
 char ReconcileStateFromProto(shim::ReconcileState state,
                              const std::string& context) {
   switch (state) {
-    case shim::NOT_RECONCILED: return NREC;
-    case shim::CLEARED:        return CREC;
-    case shim::RECONCILED:     return YREC;
-    case shim::FROZEN:         return FREC;
-    case shim::VOIDED:         return VREC;
+    case shim::RECONCILE_STATE_NOT_RECONCILED: return NREC;
+    case shim::RECONCILE_STATE_CLEARED:        return CREC;
+    case shim::RECONCILE_STATE_RECONCILED:     return YREC;
+    case shim::RECONCILE_STATE_FROZEN:         return FREC;
+    case shim::RECONCILE_STATE_VOIDED:         return VREC;
     default:
-      throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+      throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                       "unspecified reconcile state", context);
   }
 }
 
 shim::ReconcileState ReconcileStateToProto(char flag) {
   switch (flag) {
-    case NREC: return shim::NOT_RECONCILED;
-    case CREC: return shim::CLEARED;
-    case YREC: return shim::RECONCILED;
-    case FREC: return shim::FROZEN;
-    case VREC: return shim::VOIDED;
+    case NREC: return shim::RECONCILE_STATE_NOT_RECONCILED;
+    case CREC: return shim::RECONCILE_STATE_CLEARED;
+    case YREC: return shim::RECONCILE_STATE_RECONCILED;
+    case FREC: return shim::RECONCILE_STATE_FROZEN;
+    case VREC: return shim::RECONCILE_STATE_VOIDED;
     default:   return shim::RECONCILE_STATE_UNSPECIFIED;
   }
 }

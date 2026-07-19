@@ -18,7 +18,7 @@ void ValidateMutationId(const std::string& mutation_id) {
     }
   }
   if (!valid) {
-    throw ShimError(daicho::shim::v1::INVALID_ARGUMENT_DETAIL,
+    throw ShimError(daicho::shim::v1::ERROR_CODE_INVALID_ARGUMENT,
                     "mutation_id must be a UUID", mutation_id);
   }
 }

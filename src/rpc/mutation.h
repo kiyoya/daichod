@@ -54,7 +54,7 @@ grpc::Status RunMutation(EngineWorker* worker, Journal* journal,
       if (auto recorded = journal->GetOutcome(meta.mutation_id())) {
         if (!recorded->ok()) throw ShimError(recorded->error());
         if (!response->ParseFromString(recorded->response())) {
-          throw ShimError(daicho::shim::v1::ENGINE_ERROR,
+          throw ShimError(daicho::shim::v1::ERROR_CODE_ENGINE_ERROR,
                           "journal: recorded outcome does not parse as " +
                               rpc_name + " response",
                           meta.mutation_id());

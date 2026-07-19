@@ -22,7 +22,7 @@ void CheckNoCycle(::Account* account, ::Account* new_parent,
   for (::Account* cursor = new_parent; cursor != nullptr;
        cursor = gnc_account_get_parent(cursor)) {
     if (cursor == account) {
-      throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+      throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                       "parent_guid would create a cycle", context);
     }
   }
@@ -31,7 +31,7 @@ void CheckNoCycle(::Account* account, ::Account* new_parent,
 void CheckIsNotRoot(::Account* account, ::Account* root,
                     const std::string& context) {
   if (account == root) {
-    throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+    throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                     "the root account cannot be modified", context);
   }
 }
@@ -72,16 +72,16 @@ grpc::Status AccountServiceImpl::CreateAccount(
                       const PendingRecorder& record_pending) {
         const shim::Account& spec = request->account();
         if (!spec.guid().empty()) {
-          throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+          throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                           "guid must be empty on create; the engine assigns",
                           "account.guid");
         }
         if (spec.name().empty()) {
-          throw ShimError(shim::INVALID_ARGUMENT_DETAIL, "name is required",
+          throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT, "name is required",
                           "account.name");
         }
         if (spec.parent_guid().empty()) {
-          throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+          throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                           "parent_guid is required", "account.parent_guid");
         }
         QofBook* book = session_->book();
@@ -119,11 +119,11 @@ grpc::Status AccountServiceImpl::UpdateAccount(
                       const PendingRecorder& record_pending) {
         const shim::Account& spec = request->account();
         if (spec.guid().empty()) {
-          throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+          throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                           "guid is required on update", "account.guid");
         }
         if (spec.name().empty()) {
-          throw ShimError(shim::INVALID_ARGUMENT_DETAIL, "name is required",
+          throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT, "name is required",
                           "account.name");
         }
         QofBook* book = session_->book();
@@ -135,7 +135,7 @@ grpc::Status AccountServiceImpl::UpdateAccount(
         gnc_commodity* commodity =
             FindCommodity(book, spec.commodity(), "account.commodity");
         if (spec.parent_guid().empty()) {
-          throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+          throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                           "parent_guid is required (full replacement)",
                           "account.parent_guid");
         }
@@ -173,7 +173,7 @@ grpc::Status AccountServiceImpl::DeleteAccount(
         CheckIsNotRoot(account, session_->root_account(), "guid");
         if (xaccAccountGetSplitList(account) != nullptr ||
             gnc_account_n_children(account) > 0) {
-          throw ShimError(shim::ACCOUNT_NOT_EMPTY,
+          throw ShimError(shim::ERROR_CODE_ACCOUNT_NOT_EMPTY,
                           "account has splits or children", request->guid());
         }
         record_pending();
@@ -203,7 +203,7 @@ grpc::Status AccountServiceImpl::SetReconcileInfo(
                                          request->account_guid(),
                                          "account_guid");
         if (!request->has_last_date()) {
-          throw ShimError(shim::INVALID_ARGUMENT_DETAIL,
+          throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
                           "last_date is required", "last_date");
         }
         GDate date = DateFromProto(request->last_date(), "last_date");

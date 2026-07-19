@@ -47,7 +47,7 @@ class AccountServiceTest : public DaemonFixture {
     shim::AccountList response;
     EXPECT_TRUE(stub_->ListAccounts(&context, request, &response).ok());
     for (const auto& account : response.accounts()) {
-      if (account.type() == shim::ROOT) return account.guid();
+      if (account.type() == shim::ACCOUNT_TYPE_ROOT) return account.guid();
     }
     ADD_FAILURE() << "no root account in ListAccounts response";
     return "";
@@ -56,7 +56,7 @@ class AccountServiceTest : public DaemonFixture {
   shim::Account CreateAccount(const std::string& mutation_id,
                               const std::string& parent_guid,
                               const std::string& name,
-                              shim::AccountType type = shim::ASSET) {
+                              shim::AccountType type = shim::ACCOUNT_TYPE_ASSET) {
     shim::CreateAccountRequest request;
     request.mutable_meta()->set_mutation_id(mutation_id);
     shim::Account* spec = request.mutable_account();
@@ -98,7 +98,7 @@ TEST_F(AccountServiceTest, ListAccountsOnFreshBookHasOnlyRoot) {
   ASSERT_TRUE(stub_->ListAccounts(&context, request, &response).ok());
   ASSERT_EQ(response.accounts_size(), 1);
   const shim::Account& root = response.accounts(0);
-  EXPECT_EQ(root.type(), shim::ROOT);
+  EXPECT_EQ(root.type(), shim::ACCOUNT_TYPE_ROOT);
   EXPECT_TRUE(root.parent_guid().empty());
   EXPECT_EQ(root.guid().size(), 32u);
 }
@@ -109,7 +109,7 @@ TEST_F(AccountServiceTest, CreateAccountAddsChildOfRoot) {
       CreateAccount(MutationId(1), root_guid, "Checking");
   EXPECT_EQ(created.parent_guid(), root_guid);
   EXPECT_EQ(created.name(), "Checking");
-  EXPECT_EQ(created.type(), shim::ASSET);
+  EXPECT_EQ(created.type(), shim::ACCOUNT_TYPE_ASSET);
   EXPECT_EQ(created.commodity().space(), "CURRENCY");
   EXPECT_EQ(created.commodity().mnemonic(), "USD");
   EXPECT_EQ(created.guid().size(), 32u);
@@ -142,7 +142,7 @@ TEST_F(AccountServiceTest, CreateAccountRejectsNonexistentParent) {
   shim::Account* spec = request.mutable_account();
   spec->set_parent_guid(kNonexistentGuid);
   spec->set_name("Checking");
-  spec->set_type(shim::ASSET);
+  spec->set_type(shim::ACCOUNT_TYPE_ASSET);
   spec->mutable_commodity()->set_space("CURRENCY");
   spec->mutable_commodity()->set_mnemonic("USD");
   grpc::ClientContext context;
@@ -159,7 +159,7 @@ TEST_F(AccountServiceTest, CreateAccountRejectsEmptyName) {
   shim::Account* spec = request.mutable_account();
   spec->set_parent_guid(root_guid);
   spec->set_name("");
-  spec->set_type(shim::ASSET);
+  spec->set_type(shim::ACCOUNT_TYPE_ASSET);
   spec->mutable_commodity()->set_space("CURRENCY");
   spec->mutable_commodity()->set_mnemonic("USD");
   grpc::ClientContext context;
@@ -177,7 +177,7 @@ TEST_F(AccountServiceTest, CreateAccountRejectsGuidSet) {
   spec->set_guid(kNonexistentGuid);
   spec->set_parent_guid(root_guid);
   spec->set_name("Checking");
-  spec->set_type(shim::ASSET);
+  spec->set_type(shim::ACCOUNT_TYPE_ASSET);
   spec->mutable_commodity()->set_space("CURRENCY");
   spec->mutable_commodity()->set_mnemonic("USD");
   grpc::ClientContext context;
@@ -198,7 +198,7 @@ TEST_F(AccountServiceTest, UpdateAccountRenamesAndPersistsFields) {
   spec->set_guid(created.guid());
   spec->set_parent_guid(root_guid);
   spec->set_name("Checking2");
-  spec->set_type(shim::ASSET);
+  spec->set_type(shim::ACCOUNT_TYPE_ASSET);
   spec->mutable_commodity()->set_space("CURRENCY");
   spec->mutable_commodity()->set_mnemonic("USD");
   spec->set_code("1000");
@@ -233,7 +233,7 @@ TEST_F(AccountServiceTest, UpdateAccountReparentsAndRejectsCycle) {
     spec->set_guid(a.guid());
     spec->set_parent_guid(b.guid());
     spec->set_name("A");
-    spec->set_type(shim::ASSET);
+    spec->set_type(shim::ACCOUNT_TYPE_ASSET);
     spec->mutable_commodity()->set_space("CURRENCY");
     spec->mutable_commodity()->set_mnemonic("USD");
     grpc::ClientContext context;
@@ -253,7 +253,7 @@ TEST_F(AccountServiceTest, UpdateAccountReparentsAndRejectsCycle) {
     spec->set_guid(b.guid());
     spec->set_parent_guid(a.guid());
     spec->set_name("B");
-    spec->set_type(shim::ASSET);
+    spec->set_type(shim::ACCOUNT_TYPE_ASSET);
     spec->mutable_commodity()->set_space("CURRENCY");
     spec->mutable_commodity()->set_mnemonic("USD");
     grpc::ClientContext context;
@@ -307,7 +307,7 @@ TEST_F(AccountServiceTest, DeleteAccountRejectsNonEmptyParent) {
       stub_->DeleteAccount(&context, request, &response);
   EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   const shim::ErrorDetail detail = UnpackDetail(status);
-  EXPECT_EQ(detail.code(), shim::ACCOUNT_NOT_EMPTY);
+  EXPECT_EQ(detail.code(), shim::ERROR_CODE_ACCOUNT_NOT_EMPTY);
 }
 
 TEST_F(AccountServiceTest, DeleteAccountRejectsNonexistent) {

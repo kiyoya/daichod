@@ -48,7 +48,7 @@ bool SnapshotBeforeOpen(const std::string& book_path,
       fs::copy_file(journal_path, today / fs::path(journal_path).filename());
     }
   } catch (const fs::filesystem_error& e) {
-    throw ShimError(daicho::shim::v1::ENGINE_ERROR,
+    throw ShimError(daicho::shim::v1::ERROR_CODE_ENGINE_ERROR,
                     std::string("backup snapshot failed: ") + e.what(),
                     backup_dir);
   }
