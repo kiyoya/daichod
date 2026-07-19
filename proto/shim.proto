@@ -1,0 +1,310 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// daicho.shim.v1 — wire contract between daichod (C++) and the Rust API server.
+//
+// Design rules:
+//   * Amounts are exact rationals (Numeric). Floats and decimal strings are banned.
+//   * Entities are addressed by GnuCash GUIDs. No parallel ID space.
+//   * Every mutating RPC carries a client-generated UUIDv4 mutation_id and is
+//     idempotent: re-sending the same mutation_id returns the recorded outcome.
+//   * Errors: gRPC status codes carry an ErrorDetail (below) in
+//     grpc-status-details-bin. The engine's verbatim message is always included.
+//   * Post dates are calendar dates (Date), not timestamps — GnuCash posting
+//     dates are timezone-free by design. Entry timestamps are epoch seconds UTC.
+
+syntax = "proto3";
+
+package daicho.shim.v1;
+
+// ---------------------------------------------------------------- primitives
+
+// Exact rational, mirroring gnc_numeric. denom is always > 0.
+message Numeric {
+  int64 num   = 1;
+  int64 denom = 2;
+}
+
+// Timezone-free calendar date.
+message Date {
+  int32 year  = 1; // e.g. 2026
+  int32 month = 2; // 1-12
+  int32 day   = 3; // 1-31
+}
+
+// Identifies a commodity/currency, e.g. {"CURRENCY", "EUR"} or {"NASDAQ", "AAPL"}.
+message CommodityId {
+  string space    = 1; // GnuCash commodity namespace
+  string mnemonic = 2;
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED    = 0;
+  UNBALANCED_TRANSACTION    = 1;
+  ACCOUNT_NOT_FOUND         = 2;
+  TXN_NOT_FOUND             = 3;
+  COMMODITY_NOT_FOUND       = 4;
+  CURRENCY_MISMATCH         = 5;
+  ACCOUNT_NOT_EMPTY         = 6;
+  READ_ONLY_BOOK            = 7;
+  BOOK_LOCKED               = 8;
+  BOOK_NOT_OPEN             = 9;
+  INVALID_ARGUMENT_DETAIL   = 10;
+  INDETERMINATE_MUTATION    = 11;
+  ENGINE_ERROR              = 12;
+}
+
+message ErrorDetail {
+  ErrorCode code          = 1;
+  string    engine_message = 2; // verbatim from libgnucash when applicable
+  string    context        = 3; // shim-side context (offending GUID, field name)
+}
+
+// ------------------------------------------------------------------ entities
+
+enum AccountType {
+  ACCOUNT_TYPE_UNSPECIFIED = 0;
+  ASSET       = 1;
+  BANK        = 2;
+  CASH        = 3;
+  CREDIT      = 4;
+  LIABILITY   = 5;
+  EQUITY      = 6;
+  INCOME      = 7;
+  EXPENSE     = 8;
+  STOCK       = 9;
+  MUTUAL      = 10;
+  RECEIVABLE  = 11;
+  PAYABLE     = 12;
+  TRADING     = 13;
+  ROOT        = 14;
+}
+
+message Account {
+  string      guid        = 1;
+  string      parent_guid = 2; // empty only for root
+  string      name        = 3;
+  AccountType type        = 4;
+  CommodityId commodity   = 5;
+  string      code        = 6;
+  string      description = 7;
+  bool        placeholder = 8;
+  bool        hidden      = 9;
+}
+
+enum ReconcileState {
+  RECONCILE_STATE_UNSPECIFIED = 0;
+  NOT_RECONCILED = 1; // 'n'
+  CLEARED        = 2; // 'c'
+  RECONCILED     = 3; // 'y'
+  FROZEN         = 4; // 'f'
+  VOIDED         = 5; // 'v'
+}
+
+message Split {
+  string         guid            = 1; // empty on create; engine assigns
+  string         account_guid    = 2;
+  Numeric        value           = 3; // in the transaction currency
+  Numeric        quantity        = 4; // in the account's commodity
+  string         memo            = 5;
+  string         action          = 6;
+  ReconcileState reconcile_state = 7;
+}
+
+message Transaction {
+  string      guid             = 1; // empty on create; engine assigns
+  CommodityId currency         = 2;
+  Date        post_date        = 3;
+  int64       enter_time_utc   = 4; // epoch seconds; 0 on create = now
+  string      num              = 5; // check/reference number
+  string      description      = 6;
+  repeated Split splits        = 7; // values must sum to zero; engine enforces
+}
+
+message Price {
+  string      guid       = 1;
+  CommodityId commodity   = 2;
+  CommodityId currency    = 3;
+  Date        date        = 4;
+  Numeric     value       = 5;
+  string      source      = 6; // e.g. "user:price", "shim:api"
+}
+
+message Commodity {
+  CommodityId id        = 1;
+  string      fullname  = 2;
+  int32       fraction  = 3; // smallest unit denominator, e.g. 100
+  bool        is_currency = 4;
+}
+
+// ------------------------------------------------------------------ services
+
+message Empty {}
+
+message MutationMeta {
+  string mutation_id = 1; // client-generated UUIDv4, required on all mutations
+}
+
+service SessionService {
+  // daichod opens the configured book at startup; OpenBook exists for
+  // administrative reopen (e.g. after a restore) and is idempotent.
+  rpc OpenBook  (Empty) returns (BookInfo);
+  rpc CloseBook (Empty) returns (Empty);
+  rpc GetBookInfo (Empty) returns (BookInfo);
+  rpc Ping (Empty) returns (PingResponse);
+  // Crash-recovery handshake: journal entries with no recorded outcome.
+  rpc ListIndeterminateMutations (Empty) returns (IndeterminateMutations);
+}
+
+message BookInfo {
+  string      root_account_guid = 1;
+  CommodityId default_currency  = 2;
+  string      backend_uri       = 3; // redacted credentials
+  string      engine_version    = 4; // pinned libgnucash version
+  string      shim_version      = 5;
+  bool        read_only         = 6;
+}
+
+message PingResponse {
+  int64 queue_depth        = 1;
+  int64 uptime_seconds     = 2;
+  bool  book_open          = 3;
+}
+
+message IndeterminateMutations {
+  message Entry {
+    string mutation_id     = 1;
+    string rpc_name        = 2;
+    bytes  payload_sha256  = 3;
+    int64  journaled_at_utc = 4;
+  }
+  repeated Entry entries = 1;
+}
+
+service AccountService {
+  rpc ListAccounts (Empty) returns (AccountList);
+  rpc GetAccount (AccountRef) returns (Account);
+  rpc CreateAccount (CreateAccountRequest) returns (Account);
+  rpc UpdateAccount (UpdateAccountRequest) returns (Account);
+  rpc DeleteAccount (DeleteAccountRequest) returns (Empty); // fails if not empty
+}
+
+message AccountRef { string guid = 1; }
+message AccountList { repeated Account accounts = 1; }
+
+message CreateAccountRequest {
+  MutationMeta meta    = 1;
+  Account      account = 2; // guid must be empty
+}
+
+// Full replacement of mutable fields (name, parent, code, description,
+// placeholder, hidden). Type changes pass through the engine's compat check.
+message UpdateAccountRequest {
+  MutationMeta meta    = 1;
+  Account      account = 2; // guid required
+}
+
+message DeleteAccountRequest {
+  MutationMeta meta = 1;
+  string guid       = 2;
+}
+
+service TransactionService {
+  rpc GetTransaction (TxnRef) returns (Transaction);
+  rpc PostTransaction (PostTransactionRequest) returns (Transaction);
+  // Full replacement: caller sends the complete desired transaction; the shim
+  // diffs and applies within a single engine edit.
+  rpc UpdateTransaction (UpdateTransactionRequest) returns (Transaction);
+  rpc DeleteTransaction (DeleteTransactionRequest) returns (Empty);
+  rpc QuerySplits (QuerySplitsRequest) returns (QuerySplitsResponse);
+}
+
+message TxnRef { string guid = 1; }
+
+message PostTransactionRequest {
+  MutationMeta meta        = 1;
+  Transaction  transaction = 2; // guid must be empty
+}
+
+message UpdateTransactionRequest {
+  MutationMeta meta        = 1;
+  Transaction  transaction = 2; // guid required
+}
+
+message DeleteTransactionRequest {
+  MutationMeta meta = 1;
+  string guid       = 2;
+}
+
+message QuerySplitsRequest {
+  repeated string account_guids       = 1; // empty = all accounts
+  Date            date_from           = 2; // inclusive; unset = open
+  Date            date_to             = 3; // inclusive; unset = open
+  string          description_contains = 4;
+  string          memo_contains        = 5;
+  Numeric         value_min            = 6; // unset = open
+  Numeric         value_max            = 7;
+  repeated ReconcileState states       = 8; // empty = all
+  int32           page_size            = 9; // server caps at 500
+  string          page_token           = 10;
+}
+
+message SplitWithContext {
+  Split       split            = 1;
+  string      transaction_guid = 2;
+  Date        post_date        = 3;
+  string      description      = 4;
+  CommodityId txn_currency     = 5;
+}
+
+message QuerySplitsResponse {
+  repeated SplitWithContext splits = 1;
+  string next_page_token           = 2;
+}
+
+service CommodityService {
+  rpc ListCommodities (Empty) returns (CommodityList);
+  rpc GetPrices (GetPricesRequest) returns (PriceList);
+  rpc AddPrice (AddPriceRequest) returns (Price);
+}
+
+message CommodityList { repeated Commodity commodities = 1; }
+
+message GetPricesRequest {
+  CommodityId commodity = 1;
+  CommodityId currency  = 2; // unset = all quote currencies
+  Date date_from        = 3;
+  Date date_to          = 4;
+}
+
+message PriceList { repeated Price prices = 1; }
+
+message AddPriceRequest {
+  MutationMeta meta  = 1;
+  Price        price = 2; // guid must be empty
+}
+
+service BalanceService {
+  rpc GetBalance (GetBalanceRequest) returns (Balance);
+  rpc GetTrialBalance (Empty) returns (TrialBalance);
+}
+
+message GetBalanceRequest {
+  string      account_guid     = 1;
+  Date        as_of            = 2; // unset = latest
+  bool        include_children = 3;
+  CommodityId convert_to       = 4; // unset = account commodity; uses engine price-db
+}
+
+message Balance {
+  Numeric     amount    = 1;
+  CommodityId commodity = 2;
+  Date        as_of     = 3;
+}
+
+message TrialBalance {
+  message Entry {
+    CommodityId currency = 1;
+    Numeric     sum      = 2; // must be zero (0/1) for a healthy book
+  }
+  repeated Entry entries = 1;
+}
