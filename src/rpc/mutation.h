@@ -34,8 +34,10 @@ using PendingRecorder = std::function<void()>;
 //      disagree in one crash window that startup reconciliation closes
 //   4. record outcome (success bytes or typed failure); fsync; respond
 //
-// Only deterministic results are recorded: a ShimError is an outcome, any
-// other exception leaves the entry indeterminate for the recovery handshake.
+// Only deterministic results are recorded: a ShimError whose code is a
+// deterministic verdict on the request becomes the outcome; an environmental
+// ShimError (e.g. book not open) and any other exception leave the entry
+// indeterminate, so a retry with the same mutation_id re-executes.
 template <typename Response, typename ApplyFn>
 grpc::Status RunMutation(EngineWorker* worker, Journal* journal,
                          const daicho::shim::v1::MutationMeta& meta,
@@ -78,7 +80,9 @@ grpc::Status RunMutation(EngineWorker* worker, Journal* journal,
       } catch (const ShimError& shim_error) {
         outcome.set_ok(false);
         *outcome.mutable_error() = shim_error.ToDetail();
-        journal->RecordOutcome(meta.mutation_id(), outcome, now);
+        if (IsDeterministicVerdict(shim_error.code())) {
+          journal->RecordOutcome(meta.mutation_id(), outcome, now);
+        }
         throw;
       }
       journal->RecordOutcome(meta.mutation_id(), outcome, now);

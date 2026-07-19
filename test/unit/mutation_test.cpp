@@ -131,6 +131,70 @@ TEST_F(MutationTest, RecordedFailureReplaysWithoutCallingApplyAgain) {
   EXPECT_EQ(apply_calls, 1);
 }
 
+TEST_F(MutationTest, EnvironmentalFailureIsNotRecordedAndRetryReexecutes) {
+  shim::MutationMeta meta;
+  meta.set_mutation_id("66666666-6666-6666-6666-666666666666");
+  shim::CreateAccountRequest request;
+  *request.mutable_meta() = meta;
+  request.mutable_account()->set_name("Checking");
+
+  int apply_calls = 0;
+  shim::Account first_response;
+  grpc::Status status = RunMutation(
+      worker_.get(), journal_.get(), meta, request, "CreateAccount",
+      &first_response, [&](shim::Account*, const PendingRecorder&) -> void {
+        ++apply_calls;
+        throw ShimError(shim::ERROR_CODE_BOOK_NOT_OPEN, "book is closed");
+      });
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::UNAVAILABLE);
+  EXPECT_EQ(apply_calls, 1);
+  EXPECT_FALSE(journal_->GetOutcome(meta.mutation_id()).has_value());
+
+  // Book reopened; the same mutation_id must re-execute rather than replay
+  // the stale environmental failure.
+  shim::Account second_response;
+  status = RunMutation(
+      worker_.get(), journal_.get(), meta, request, "CreateAccount",
+      &second_response, [&](shim::Account* out, const PendingRecorder& record_pending) {
+        ++apply_calls;
+        out->set_guid("abc-guid");
+        out->set_name("Checking");
+        record_pending();
+      });
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(apply_calls, 2);
+  EXPECT_EQ(second_response.guid(), "abc-guid");
+
+  const std::optional<internal::Outcome> recorded =
+      journal_->GetOutcome(meta.mutation_id());
+  ASSERT_TRUE(recorded.has_value());
+  EXPECT_TRUE(recorded->ok());
+}
+
+TEST_F(MutationTest, ReadOnlyBookFailureIsNotRecorded) {
+  shim::MutationMeta meta;
+  meta.set_mutation_id("77777777-7777-7777-7777-777777777777");
+  shim::CreateAccountRequest request;
+  *request.mutable_meta() = meta;
+  request.mutable_account()->set_name("Checking");
+
+  int apply_calls = 0;
+  shim::Account response;
+  const grpc::Status status = RunMutation(
+      worker_.get(), journal_.get(), meta, request, "CreateAccount",
+      &response, [&](shim::Account*, const PendingRecorder&) -> void {
+        ++apply_calls;
+        throw ShimError(shim::ERROR_CODE_READ_ONLY_BOOK,
+                        "daemon is read-only");
+      });
+
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+  EXPECT_EQ(apply_calls, 1);
+  // Daemon config, not a property of the request: a restart into writable
+  // mode must re-execute the retry, not replay this failure.
+  EXPECT_FALSE(journal_->GetOutcome(meta.mutation_id()).has_value());
+}
+
 TEST_F(MutationTest, InvalidMutationIdIsRejectedAndNeverJournaled) {
   shim::MutationMeta meta;
   meta.set_mutation_id("not-a-uuid");
