@@ -9,6 +9,8 @@ A small C++ daemon that links libgnucash and serves a gRPC contract over a Unix 
 
 **Status:** under implementation, following the design documents.
 
+**Code style:** C++ follows the [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
+
 ## Building
 
 The only supported build environment is a container (no distro ships libgnucash
