@@ -13,14 +13,17 @@ if(NOT GNUCASH_PINNED_VERSION)
   set(GNUCASH_PINNED_VERSION "unknown")
 endif()
 
+# gRPC + protobuf come from the source-built stack in the image (the
+# contract uses edition 2024, beyond any distro package). Static libs,
+# CMake config packages.
+set(GRPC_PREFIX "/opt/grpc" CACHE PATH "gRPC/protobuf install prefix")
+list(APPEND CMAKE_PREFIX_PATH ${GRPC_PREFIX})
+find_package(Protobuf CONFIG REQUIRED)
+find_package(gRPC CONFIG REQUIRED)
+
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(GRPCPP REQUIRED IMPORTED_TARGET grpc++)
-pkg_check_modules(PROTOBUF REQUIRED IMPORTED_TARGET protobuf)
 pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0 gobject-2.0)
 pkg_check_modules(SQLITE REQUIRED IMPORTED_TARGET sqlite3)
-
-find_program(PROTOC protoc REQUIRED)
-find_program(GRPC_CPP_PLUGIN grpc_cpp_plugin REQUIRED)
 
 # ------------------------------------------------------------ proto codegen
 set(PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/proto)
@@ -29,12 +32,12 @@ file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
 add_custom_command(
   OUTPUT ${PROTO_GEN_DIR}/shim.pb.cc ${PROTO_GEN_DIR}/shim.pb.h
          ${PROTO_GEN_DIR}/shim.grpc.pb.cc ${PROTO_GEN_DIR}/shim.grpc.pb.h
-  COMMAND ${PROTOC}
+  COMMAND protobuf::protoc
           --proto_path=${PROTO_DIR}
-          --proto_path=/usr/include
+          --proto_path=${GRPC_PREFIX}/include
           --cpp_out=${PROTO_GEN_DIR}
           --grpc_out=${PROTO_GEN_DIR}
-          --plugin=protoc-gen-grpc=${GRPC_CPP_PLUGIN}
+          --plugin=protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>
           ${PROTO_DIR}/shim.proto
   DEPENDS ${PROTO_DIR}/shim.proto
   COMMENT "Generating C++ stubs for daicho.shim.v1")
@@ -44,9 +47,9 @@ add_custom_command(
 add_custom_command(
   OUTPUT ${PROTO_GEN_DIR}/google/rpc/status.pb.cc
          ${PROTO_GEN_DIR}/google/rpc/status.pb.h
-  COMMAND ${PROTOC}
+  COMMAND protobuf::protoc
           --proto_path=${PROTO_DIR}
-          --proto_path=/usr/include
+          --proto_path=${GRPC_PREFIX}/include
           --cpp_out=${PROTO_GEN_DIR}
           ${PROTO_DIR}/google/rpc/status.proto
   DEPENDS ${PROTO_DIR}/google/rpc/status.proto
@@ -55,10 +58,10 @@ add_custom_command(
 # daichod.internal.Outcome — journal records, never on the wire.
 add_custom_command(
   OUTPUT ${PROTO_GEN_DIR}/internal.pb.cc ${PROTO_GEN_DIR}/internal.pb.h
-  COMMAND ${PROTOC}
+  COMMAND protobuf::protoc
           --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/src/journal
           --proto_path=${PROTO_DIR}
-          --proto_path=/usr/include
+          --proto_path=${GRPC_PREFIX}/include
           --cpp_out=${PROTO_GEN_DIR}
           ${CMAKE_CURRENT_SOURCE_DIR}/src/journal/internal.proto
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/journal/internal.proto
@@ -71,7 +74,7 @@ add_library(daichod_proto STATIC
   ${PROTO_GEN_DIR}/google/rpc/status.pb.cc
   ${PROTO_GEN_DIR}/internal.pb.cc)
 target_include_directories(daichod_proto PUBLIC ${PROTO_GEN_DIR})
-target_link_libraries(daichod_proto PUBLIC PkgConfig::GRPCPP PkgConfig::PROTOBUF)
+target_link_libraries(daichod_proto PUBLIC gRPC::grpc++ protobuf::libprotobuf)
 
 # ------------------------------------------------------------ gnucash engine
 # GnuCash exports no CMake/pkg-config metadata; locate the installed libs.
