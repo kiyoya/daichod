@@ -1,18 +1,22 @@
 name: CI
 
-# Single-maintainer flow: no PRs. The cheap contract checks run on every
-# push; the container build + full test suite runs hourly (and on demand),
-# skipping entirely when the current commit already passed.
+# PR flow: contract checks and the container build + full test suite run on
+# every pull request and on main. The registry layer cache keeps the warm
+# path at a few minutes; only a GNUCASH_VERSION/GRPC_VERSION pin bump pays
+# the ~60-minute source-stage rebuild again.
 on:
+  pull_request:
   push:
     branches: [main]
-  schedule:
-    - cron: "17 * * * *"
   workflow_dispatch:
+
+# A force-push to a PR branch supersedes the running build for that ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   proto:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -39,24 +43,7 @@ jobs:
             echo "no tags yet; skipping breaking-change detection"
           fi
 
-  # Dedup gate: a cache marker exists iff this exact commit already passed
-  # build-test, so idle hours cost one no-op lookup instead of a build.
-  guard:
-    if: github.event_name != 'push'
-    runs-on: ubuntu-latest
-    outputs:
-      tested: ${{ steps.marker.outputs.cache-hit }}
-    steps:
-      - id: marker
-        uses: actions/cache/restore@v4
-        with:
-          path: .build-tested
-          key: build-tested-${{ github.sha }}
-          lookup-only: true
-
   build-test:
-    needs: guard
-    if: needs.guard.outputs.tested != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,6 +60,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       # The gnucash and grpc stages compile from source (~40 and ~20 min
       # cold); the registry cache makes that a one-time cost per pin bump.
+      # Only main refreshes the shared cache: PR branches read it but must
+      # not churn it (and a fork PR's read-only token couldn't write it).
       - name: Build dev image
         uses: docker/build-push-action@v6
         with:
@@ -82,7 +71,7 @@ jobs:
           tags: daichod-dev:ci
           load: true
           cache-from: type=registry,ref=${{ env.CACHE_REF }}
-          cache-to: type=registry,ref=${{ env.CACHE_REF }},mode=max
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref={0},mode=max', env.CACHE_REF) || '' }}
       # Compiler cache: the image sets CCACHE_DIR=/ccache; the cached host
       # directory is bind-mounted there.
       - name: Restore compiler cache
@@ -112,9 +101,3 @@ jobs:
           target: runtime
           tags: daichod:ci
           cache-from: type=registry,ref=${{ env.CACHE_REF }}
-      - name: Mark commit as tested
-        run: touch .build-tested
-      - uses: actions/cache/save@v4
-        with:
-          path: .build-tested
-          key: build-tested-${{ github.sha }}
