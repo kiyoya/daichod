@@ -186,6 +186,25 @@ service AccountService {
   rpc CreateAccount (CreateAccountRequest) returns (Account);
   rpc UpdateAccount (UpdateAccountRequest) returns (Account);
   rpc DeleteAccount (DeleteAccountRequest) returns (Empty); // fails if not empty
+  // Reconcile metadata shared with the desktop reconcile dialog. The
+  // last-reconciled date is the stored account slot the dialog reads and
+  // writes; the reconciled balance is always computed by the engine from
+  // reconciled splits (there is no stored balance slot), so it is served
+  // read-only and API and desktop agree by construction.
+  rpc GetReconcileInfo (AccountRef) returns (ReconcileInfo);
+  rpc SetReconcileInfo (SetReconcileInfoRequest) returns (ReconcileInfo);
+}
+
+message ReconcileInfo {
+  string  account_guid       = 1;
+  Date    last_date          = 2; // unset = never reconciled
+  Numeric reconciled_balance = 3; // engine-computed, in the account commodity
+}
+
+message SetReconcileInfoRequest {
+  MutationMeta meta         = 1;
+  string       account_guid = 2;
+  Date         last_date    = 3; // required
 }
 
 message AccountRef { string guid = 1; }

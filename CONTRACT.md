@@ -21,7 +21,7 @@ The protobuf contract between daichod and daicho-api. It lives in the **daichod 
 Five services, twenty-two RPCs — the ceiling is intentional, and additions require justifying why the operation is mechanical engine access rather than policy:
 
 - **SessionService** — `OpenBook`, `CloseBook`, `GetBookInfo`, `Ping`, `ListIndeterminateMutations` (crash-recovery handshake: journaled mutations with no recorded outcome).
-- **AccountService** — `ListAccounts`, `GetAccount`, `CreateAccount`, `UpdateAccount`, `DeleteAccount` (fails unless empty), plus `GetReconcileInfo` / `SetReconcileInfo` for the account-slot metadata (last reconciled date and balance) that desktop GnuCash's reconcile dialog reads — keeping API and desktop reconciliation in agreement about where you left off.
+- **AccountService** — `ListAccounts`, `GetAccount`, `CreateAccount`, `UpdateAccount`, `DeleteAccount` (fails unless empty), plus `GetReconcileInfo` / `SetReconcileInfo` for the reconcile metadata desktop GnuCash's dialog uses: the last-reconciled date is the stored account slot (read and written), while the reconciled balance is engine-computed from reconciled splits — there is no stored balance slot — and therefore served read-only, keeping API and desktop reconciliation in agreement by construction.
 - **TransactionService** — `GetTransaction`, `PostTransaction`, `UpdateTransaction`, `DeleteTransaction`, `QuerySplits` (filtered, cursor-paginated, built on the engine Query API).
 - **CommodityService** — `ListCommodities`, `GetPrices`, `AddPrice`.
 - **BalanceService** — `GetBalance` (as-of, children, optional price-db currency conversion), `GetTrialBalance` (per-currency split sums; zero for a healthy book — the health-check primitive).
