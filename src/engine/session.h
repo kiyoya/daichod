@@ -40,7 +40,10 @@ class Session {
   void Open();
 
   // Saves pending state, releases the engine lock, destroys the session.
-  // Idempotent.
+  // Idempotent. Teardown (releasing the lock, destroying the session) always
+  // completes even when the save fails; the save error is rethrown only
+  // after, so a failed Close() still leaves the session closed and safe to
+  // reopen with Open() rather than wedged.
   void Close();
 
   // Safe to call from any thread (Ping must answer even when the engine

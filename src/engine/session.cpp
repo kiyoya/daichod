@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include <cstdio>
+#include <exception>
 #include <map>
 #include <string>
 
@@ -14,6 +16,7 @@
 
 #include "engine/map.h"
 #include "rpc/error.h"
+#include "util/fail_point.h"
 
 namespace daichod {
 
@@ -76,7 +79,22 @@ void Session::GlobalInit() {
 void Session::GlobalShutdown() { gnc_engine_shutdown(); }
 
 Session::~Session() {
-  if (session_ != nullptr) Close();
+  // Destructor is implicitly noexcept; a real close belongs on the engine
+  // thread via an explicit Close() call, so a save failure here is a
+  // last-resort backstop, not the primary error-reporting path — log and
+  // swallow rather than std::terminate the process.
+  if (session_ == nullptr) return;
+  try {
+    Close();
+  } catch (const std::exception& e) {
+    std::fprintf(stderr,
+                 "daichod: session close failed during destruction: %s\n",
+                 e.what());
+  } catch (...) {
+    std::fprintf(stderr,
+                 "daichod: session close failed during destruction: "
+                 "unknown error\n");
+  }
 }
 
 void Session::Open() {
@@ -134,14 +152,31 @@ void Session::Open() {
 
 void Session::Close() {
   if (session_ == nullptr) return;
+  QofSession* session = session_;
   open_.store(false, std::memory_order_relaxed);
+
+  // Teardown (end/destroy/session_ = nullptr) must complete before a save
+  // error is allowed to propagate. Otherwise a failed save would leave
+  // is_open() false with session_ still non-null: Open()'s reopen guard
+  // treats non-null session_ as "already open" and no-ops forever, so the
+  // session wedges with no RPC able to recover it, and a second failure on
+  // the destructor's re-close would escape past this point too.
+  std::exception_ptr save_error;
   if (!config_.read_only) {
-    qof_session_save(session_, nullptr);
-    ThrowOnSessionError(session_, config_.book_uri);
+    try {
+      FailPointMaybe("session_close_save");
+      qof_session_save(session, nullptr);
+      ThrowOnSessionError(session, config_.book_uri);
+    } catch (...) {
+      save_error = std::current_exception();
+    }
   }
-  qof_session_end(session_);
-  qof_session_destroy(session_);
+
+  qof_session_end(session);
+  qof_session_destroy(session);
   session_ = nullptr;
+
+  if (save_error) std::rethrow_exception(save_error);
 }
 
 QofBook* Session::book() const {

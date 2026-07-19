@@ -258,12 +258,15 @@ int Run(const Options& options) {
   server->Wait();
 
   // In-flight handlers have finished; run the close on the engine thread,
-  // then drain whatever is still queued.
+  // then drain whatever is still queued. A failed final save must not exit
+  // 0 — the supervisor treats that as a clean shutdown.
+  int exit_code = 0;
   try {
     worker.Run([&session] { session.Close(); });
   } catch (const std::exception& e) {
     std::fprintf(stderr, "{\"error\":\"close_failed\",\"detail\":\"%s\"}\n",
                  e.what());
+    exit_code = 1;
   }
   worker.Drain();
   unlink(options.socket_path.c_str());
@@ -271,7 +274,7 @@ int Run(const Options& options) {
   // Wake and join the signal thread if shutdown came from elsewhere.
   kill(getpid(), SIGTERM);
   signal_thread.join();
-  return 0;
+  return exit_code;
 }
 
 }  // namespace

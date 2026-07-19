@@ -29,7 +29,7 @@ Reads run on the same engine thread — fast, always consistent with writes; cac
 
 ## Startup, shutdown, supervision
 
-Startup: acquire locks → open sidecar journal → open book → run engine scrub/check routines → assert trial balance is zero in every currency → report indeterminate mutations → serve. Any failure exits nonzero with a machine-readable reason. SIGTERM drains the queue, closes the book cleanly, releases locks. The shim runs as a supervised child of daicho-api with restart-on-failure; because all state is the book plus the journal, a crash is a restart plus the indeterminate handshake, never a recovery procedure. Before the first open of each day the book and sidecar are snapshotted to a rotating backup directory.
+Startup: acquire locks → open sidecar journal → open book → run engine scrub/check routines → assert trial balance is zero in every currency → report indeterminate mutations → serve. Any failure exits nonzero with a machine-readable reason. SIGTERM drains the queue, closes the book cleanly, releases locks. If the final save fails, teardown still completes and locks are still released, but the daemon reports the failure (stderr JSON) and exits nonzero. The shim runs as a supervised child of daicho-api with restart-on-failure; because all state is the book plus the journal, a crash is a restart plus the indeterminate handshake, never a recovery procedure. Before the first open of each day the book and sidecar are snapshotted to a rotating backup directory.
 
 ## Build and compatibility
 
