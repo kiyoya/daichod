@@ -150,5 +150,18 @@ TEST_F(LifecycleTest, StaleTmpSnapshotIsCleanedAndRetried) {
       << "the stale .tmp directory should have been removed";
 }
 
+// Pins that a supervisor's SIGTERM takes the graceful drain path (server
+// shutdown, engine close, worker drain, socket unlink) rather than the
+// thread's default disposition killing the process outright.
+TEST_F(LifecycleTest, CleanSigtermExitCodeZero) {
+  Connect();
+
+  ASSERT_EQ(kill(daemon_pid_, SIGTERM), 0);
+  const int status = WaitForExit();
+
+  ASSERT_TRUE(WIFEXITED(status)) << "daemon did not exit normally";
+  EXPECT_EQ(WEXITSTATUS(status), 0);
+}
+
 }  // namespace
 }  // namespace daichod::testing
