@@ -100,8 +100,13 @@ COPY --from=grpc /opt/grpc /opt/grpc
 COPY --from=gnucash /opt/gnucash /opt/gnucash
 # gnucash-cli's reports are guile modules; a prefix install ships no
 # environment file, so the load paths are set here.
+# ccache persists in the bind-mounted repo (gitignored), so warm rebuilds
+# survive container recreation with no extra volume plumbing — and CI can
+# cache the same directory.
 ENV PATH=/opt/grpc/bin:/opt/gnucash/bin:$PATH \
     CMAKE_PREFIX_PATH=/opt/grpc \
+    CCACHE_DIR=/src/.ccache \
+    CCACHE_MAXSIZE=2G \
     LD_LIBRARY_PATH=/opt/gnucash/lib:/opt/gnucash/lib/gnucash \
     GUILE_LOAD_PATH=/opt/gnucash/share/guile/site/3.0 \
     GUILE_LOAD_COMPILED_PATH=/opt/gnucash/lib/x86_64-linux-gnu/guile/3.0/site-ccache \
