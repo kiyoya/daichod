@@ -17,6 +17,27 @@ their workarounds. Nothing builds on the host, ever.
   (validation the engine doesn't do, interpretation, defaults with
   business meaning), it belongs in daicho-api, not here.
 
+## Version control
+
+- Any non-trivial work happens on a descriptively named branch; commits
+  land on main only with the human's identity and signature.
+- Agent-made commits keep the human as author and add the agent's
+  identity as a `Co-Authored-By` footer (platform domain, e.g.
+  `noreply@anthropic.com`). Never change git config; override per
+  invocation with `git -c` when needed. When the human is not present
+  to approve a signature, disable signing for that commit
+  (`git -c commit.gpgsign=false commit`) — the human signs later
+  (e.g. `git rebase --gpg-sign` over the branch).
+- One topic per commit. ~100 changed lines is a comfortable size,
+  ~1000 is too large; never bundle unrelated topics. Messages explain
+  the WHY, use the history's style (short imperative subject ending
+  with a period), and never use conventional-commit prefixes.
+- After a chain of commits, ask the human for review with a clear
+  summary of what changed (show `--stat` when scope could be doubted).
+  Finalize per the human's choice: local squash merge onto main, a
+  pushed branch for a GitHub squash-merge, or per-commit sign-off.
+  Ask before pushing.
+
 ## Invariants to never break
 
 - The engine is not thread-safe: every libgnucash call belongs on the
