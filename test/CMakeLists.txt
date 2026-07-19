@@ -49,3 +49,11 @@ daichod_add_daemon_tests(daichod_crash_tests integration/crash_test.cpp)
 # Lifecycle: --backup-dir daily snapshot behavior across restarts.
 daichod_add_daemon_tests(daichod_lifecycle_tests
   integration/lifecycle_test.cpp)
+# Golden-book round-trip: the pinned gnucash-cli arbitrates.
+daichod_add_daemon_tests(daichod_golden_tests golden/golden_test.cpp)
+# Property tests: seeded random balanced transactions, invariants held.
+daichod_add_daemon_tests(daichod_property_tests property/property_test.cpp)
+target_include_directories(daichod_golden_tests
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/integration)
+target_include_directories(daichod_property_tests
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/integration)

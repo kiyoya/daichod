@@ -66,8 +66,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libgtk-3-0t64 libwebkit2gtk-4.1-0 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=gnucash /opt/gnucash /opt/gnucash
+# gnucash-cli's reports are guile modules; a prefix install ships no
+# environment file, so the load paths are set here.
 ENV PATH=/opt/gnucash/bin:$PATH \
     LD_LIBRARY_PATH=/opt/gnucash/lib:/opt/gnucash/lib/gnucash \
+    GUILE_LOAD_PATH=/opt/gnucash/share/guile/site/3.0 \
+    GUILE_LOAD_COMPILED_PATH=/opt/gnucash/lib/x86_64-linux-gnu/guile/3.0/site-ccache \
     GNUCASH_VERSION=${GNUCASH_VERSION}
 WORKDIR /src
 
@@ -98,5 +102,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=gnucash /opt/gnucash /opt/gnucash
 COPY --from=build /build/daichod /usr/local/bin/daichod
 ENV PATH=/opt/gnucash/bin:$PATH \
-    LD_LIBRARY_PATH=/opt/gnucash/lib:/opt/gnucash/lib/gnucash
+    LD_LIBRARY_PATH=/opt/gnucash/lib:/opt/gnucash/lib/gnucash \
+    GUILE_LOAD_PATH=/opt/gnucash/share/guile/site/3.0 \
+    GUILE_LOAD_COMPILED_PATH=/opt/gnucash/lib/x86_64-linux-gnu/guile/3.0/site-ccache
 ENTRYPOINT ["/usr/local/bin/daichod"]
