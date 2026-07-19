@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Internal journal records. NOT part of the daicho.shim.v1 contract — never
+// sent on the wire; stored in the sidecar's `applied` table so a duplicate
+// mutation_id can be answered with the recorded outcome byte-for-byte.
+
+syntax = "proto3";
+
+package daichod.internal;
+
+import "shim.proto";
+
+message Outcome {
+  string rpc_name = 1;
+  bool ok = 2;
+  // Serialized response message of the RPC named above (when ok).
+  bytes response = 3;
+  // The typed failure (when !ok). Replayed verbatim.
+  daicho.shim.v1.ErrorDetail error = 4;
+}
