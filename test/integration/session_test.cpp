@@ -106,5 +106,32 @@ TEST_F(DaemonFixture, SecondInstanceFailsLoudly) {
   EXPECT_NE(exit_code, 0);
 }
 
+TEST_F(DaemonFixture, SecondInstanceDifferentSocketSameBookFailsLoudly) {
+  Connect();
+  // Different socket, same book: the socket-path flock alone would not
+  // collide, but the book-identity lock must reject it regardless.
+  const std::filesystem::path other_socket = dir_ / "other.sock";
+  const int exit_code =
+      RunCommand({daichod_bin_, "--book-uri", book_uri_, "--socket",
+                  other_socket.string()});
+  EXPECT_NE(exit_code, 0);
+}
+
+TEST_F(DaemonFixture, StaleGncLockFromDeadPidIsBroken) {
+  // Establish that the book is open under the first daemon, then take it
+  // out hard enough that the engine's gnclock row is never released — the
+  // same crash story a real restart-on-failure recovers from.
+  Connect();
+  KillDaemonHard();
+  StartDaemon(daichod_bin_);
+
+  auto stub = shim::SessionService::NewStub(Connect());
+  grpc::ClientContext context;
+  shim::Empty request;
+  shim::PingResponse response;
+  ASSERT_TRUE(stub->Ping(&context, request, &response).ok());
+  EXPECT_TRUE(response.book_open());
+}
+
 }  // namespace
 }  // namespace daichod::testing

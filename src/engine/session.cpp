@@ -1,18 +1,24 @@
 #include "engine/session.h"
 
-#include <utility>
+#include <signal.h>
+#include <unistd.h>
 
+#include <cerrno>
 #include <cstdio>
+#include <cstring>
 #include <exception>
 #include <map>
 #include <string>
+#include <utility>
 
 #include <Account.h>
 #include <Query.h>
 #include <Split.h>
 #include <Transaction.h>
+#include <glib.h>
 #include <gnc-engine.h>
 #include <qof.h>
+#include <sqlite3.h>
 
 #include "engine/map.h"
 #include "rpc/error.h"
@@ -41,6 +47,14 @@ bool HasSupportedScheme(const std::string& uri) {
   return uri.rfind("sqlite3://", 0) == 0 || uri.rfind("postgres://", 0) == 0;
 }
 
+// Local filesystem path for sqlite3:// books; empty otherwise. Mirrors
+// main.cpp's Options::book_path() idiom.
+std::string Sqlite3Path(const std::string& uri) {
+  static constexpr char kPrefix[] = "sqlite3://";
+  return uri.rfind(kPrefix, 0) == 0 ? uri.substr(sizeof(kPrefix) - 1)
+                                    : std::string();
+}
+
 // Classifies a backend error; the engine's own message text (when the
 // session provides one) rides along verbatim.
 ShimError BackendError(QofBackendError error, const char* engine_message,
@@ -67,6 +81,50 @@ void ThrowOnSessionError(QofSession* session, const std::string& uri) {
 }
 
 }  // namespace
+
+bool GncLockIsProvablyStale(const std::string& book_uri) {
+  const std::string path = Sqlite3Path(book_uri);
+  if (path.empty()) return false;  // postgres: no local gnclock to inspect
+
+  sqlite3* db = nullptr;
+  if (sqlite3_open_v2(path.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) !=
+      SQLITE_OK) {
+    sqlite3_close(db);
+    return false;
+  }
+  sqlite3_busy_timeout(db, 200);
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db, "SELECT Hostname, PID FROM gnclock", -1, &stmt,
+                         nullptr) != SQLITE_OK) {
+    sqlite3_close(db);
+    return false;  // e.g. no gnclock table: ambiguous, refuse to break
+  }
+
+  // Same accessor GnuCash's own SQL backend uses to write the row, so a
+  // match here means the same host wrote it (not merely a lookalike from
+  // gethostname(2), which can disagree with GLib's cached/normalized name).
+  const char* this_host = g_get_host_name();
+  bool provably_stale = true;
+  int rc;
+  while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+    const unsigned char* row_host = sqlite3_column_text(stmt, 0);
+    const auto row_pid = static_cast<pid_t>(sqlite3_column_int64(stmt, 1));
+    const bool same_host =
+        row_host != nullptr &&
+        std::strcmp(reinterpret_cast<const char*>(row_host), this_host) == 0;
+    const bool dead = kill(row_pid, 0) != 0 && errno == ESRCH;
+    if (!(same_host && dead)) {
+      provably_stale = false;
+      break;
+    }
+  }
+  if (rc != SQLITE_DONE && rc != SQLITE_ROW) provably_stale = false;  // I/O
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return provably_stale;
+}
 
 void Session::GlobalInit() {
   gnc_environment_setup();
@@ -115,16 +173,27 @@ void Session::Open() {
 
   // The engine's own book-level lock is a row inside the book itself,
   // released only by a clean session end; a crash-point abort() never gets
-  // there, so it outlives the process. daichod's flock on the socket path
-  // (AcquireLocks in main.cpp, taken before Open() is ever reached) is the
-  // authoritative check for a second live daichod instance, so a lock
-  // reported here can only be this book's own stale lock from a prior
-  // crash — break it, exactly as DESIGN.md promises ("a crash is a restart
-  // ... never a recovery procedure"). Retrying on the same session object
-  // is safe: a failed begin() resets its internal URI/backend state.
+  // there, so it outlives the process. daichod's book-identity flock
+  // (AcquireLocks in main.cpp, taken before Open() is ever reached, keyed to
+  // the book rather than --socket) is the authoritative check for a second
+  // live daichod instance, so it rules out that possibility entirely — a
+  // lock reported here is either this book's own stale lock from a prior
+  // crash (break it, exactly as DESIGN.md promises: "a crash is a restart
+  // ... never a recovery procedure") or a live writer that isn't daichod,
+  // most likely desktop GnuCash open on the same file (refuse; breaking a
+  // live editor's lock would give the book two writers). For sqlite3 books,
+  // GncLockIsProvablyStale distinguishes the two by reading the lock row's
+  // Hostname/PID; only a positive confirmation of death breaks it. postgres
+  // books keep the unconditional break — checking a postgres gnclock row
+  // would need libpq, which isn't linked here; a documented scope cut, not
+  // an oversight. Retrying on the same session object is safe: a failed
+  // begin() resets its internal URI/backend state.
   if (error == ERR_BACKEND_LOCKED && !config_.read_only) {
-    qof_session_begin(session, config_.book_uri.c_str(), SESSION_BREAK_LOCK);
-    error = qof_session_get_error(session);
+    const bool is_sqlite3 = config_.book_uri.rfind("sqlite3://", 0) == 0;
+    if (!is_sqlite3 || GncLockIsProvablyStale(config_.book_uri)) {
+      qof_session_begin(session, config_.book_uri.c_str(), SESSION_BREAK_LOCK);
+      error = qof_session_get_error(session);
+    }
   }
 
   if (error != ERR_BACKEND_NO_ERR) {

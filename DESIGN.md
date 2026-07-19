@@ -8,7 +8,7 @@ A small C++ daemon that links libgnucash directly and serves the `daicho-proto` 
 
 The engine is not thread-safe and assumes a single writer; the shim embraces this. One process owns exactly one book. gRPC I/O threads decode requests onto a bounded FIFO queue; a single dedicated **engine thread** executes them strictly in order — including reads — and returns results via futures. There is no engine-side locking because there is no engine-side concurrency. Serialization is the concurrency model.
 
-Exclusivity is enforced three ways — the engine's own book lock, `flock` on the socket path, a PID file — and a second instance pointed at the same book fails loudly at startup rather than queueing.
+Exclusivity is keyed to book identity, not to `--socket`: a `flock` plus PID file on `<book>.daichod.lock` for sqlite3 books, or on a hashed-URI path next to the journal for postgres books (credentials stripped before hashing), so a second instance pointed at the same book fails loudly at startup regardless of which socket it was given. The socket-path flock/PID file is kept alongside it as a same-socket guard. Underneath both sits the engine's own book lock; daichod breaks it only when provably stale — same hostname, dead PID — for sqlite3 books, so a crash is a restart and desktop GnuCash's live lock is never stolen. postgres books retain an unconditional break of the engine lock as a documented residual risk (checking a postgres lock row needs libpq, which isn't linked).
 
 ## Mutation protocol
 
