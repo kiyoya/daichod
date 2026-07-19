@@ -49,6 +49,17 @@ void NumericToProto(gnc_numeric value, shim::Numeric* out) {
 }
 
 GDate DateFromProto(const shim::Date& date, const std::string& context) {
+  // Range-check before narrowing to GLib's types (GDateDay=guint8,
+  // GDateYear=guint16): an out-of-range int32 would otherwise wrap into a
+  // different in-range value and pass g_date_valid_dmy.
+  if (date.year() < 1 || date.year() > 65535 || date.month() < 1 ||
+      date.month() > 12 || date.day() < 1 || date.day() > 31) {
+    throw ShimError(shim::ERROR_CODE_INVALID_ARGUMENT,
+                    "invalid calendar date " + std::to_string(date.year()) +
+                        "-" + std::to_string(date.month()) + "-" +
+                        std::to_string(date.day()),
+                    context);
+  }
   if (!g_date_valid_dmy(static_cast<GDateDay>(date.day()),
                         static_cast<GDateMonth>(date.month()),
                         static_cast<GDateYear>(date.year()))) {
