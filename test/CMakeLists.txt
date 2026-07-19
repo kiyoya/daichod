@@ -38,3 +38,25 @@ endforeach()
 ")
 set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
   ${daichod_integration_tests_env_file})
+
+# AccountService end-to-end tests: same daemon-over-socket approach, kept as
+# a separate binary so it can grow independently of session_test.cpp. Needs
+# daichod_proto (not just daichod_core) for the generated stubs plus
+# google.rpc.Status for error-detail parsing.
+add_executable(daichod_account_tests
+  integration/account_test.cpp)
+target_link_libraries(daichod_account_tests
+  PRIVATE daichod_proto GTest::gtest_main)
+add_dependencies(daichod_account_tests daichod daichod-mkbook)
+gtest_discover_tests(daichod_account_tests)
+
+set(daichod_account_tests_env_file
+  ${CMAKE_CURRENT_BINARY_DIR}/daichod_account_tests_env.cmake)
+file(GENERATE OUTPUT ${daichod_account_tests_env_file} CONTENT "\
+foreach(_test IN LISTS daichod_account_tests_TESTS)
+  set_tests_properties(\"\${_test}\" PROPERTIES ENVIRONMENT
+    \"DAICHOD_BIN=$<TARGET_FILE:daichod>;DAICHOD_MKBOOK=$<TARGET_FILE:daichod-mkbook>\")
+endforeach()
+")
+set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
+  ${daichod_account_tests_env_file})
