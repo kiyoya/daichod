@@ -1,5 +1,7 @@
 # daichod
 
+[![CI](https://github.com/kiyoya/daichod/actions/workflows/ci.yml/badge.svg)](https://github.com/kiyoya/daichod/actions/workflows/ci.yml)
+
 The engine boundary of Daicho. One process, one book, one engine thread — deliberately too small to be wrong. GPL-3.0-or-later; the protobuf contract in `proto/` is Apache-2.0.
 
 A small C++ daemon that links libgnucash and serves a gRPC contract over a Unix domain socket. It is the only process that ever opens the book; all policy lives upstairs in daicho-api. A single engine thread executes all requests in order — serialization is the concurrency model. Mutations are journaled and idempotent; after a crash, unresolved ones are reported, never silently replayed.
