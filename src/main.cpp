@@ -19,7 +19,9 @@
 #include "engine/worker.h"
 #include "journal/journal.h"
 #include "rpc/account_service.h"
+#include "rpc/commodity_service.h"
 #include "rpc/session_service.h"
+#include "rpc/transaction_service.h"
 
 namespace daichod {
 namespace {
@@ -157,12 +159,19 @@ int Run(const Options& options) {
 
   SessionServiceImpl session_service(&worker, &session, journal.get());
   AccountServiceImpl account_service(&worker, &session, journal.get());
+  TransactionServiceImpl transaction_service(&worker, &session,
+                                             journal.get());
+  CommodityServiceImpl commodity_service(&worker, &session, journal.get());
+  BalanceServiceImpl balance_service(&worker, &session);
 
   grpc::ServerBuilder builder;
   builder.AddListeningPort("unix:" + options.socket_path,
                            grpc::InsecureServerCredentials());
   builder.RegisterService(&session_service);
   builder.RegisterService(&account_service);
+  builder.RegisterService(&transaction_service);
+  builder.RegisterService(&commodity_service);
+  builder.RegisterService(&balance_service);
   std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
   if (server == nullptr) Fail("listen_failed", options.socket_path);
 
