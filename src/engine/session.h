@@ -67,4 +67,16 @@ class Session {
   std::atomic<bool> open_{false};
 };
 
+// Best-effort sqlite3-only check of the engine's own gnclock row (the
+// Hostname/PID columns the SQL backend writes when it takes the book lock).
+// Returns true only when the lock is provably dead — the row's hostname
+// matches this host and its PID no longer exists, or the table has no rows
+// at all — and false on any ambiguity: a different host, a live or
+// unkillable PID, or an unreadable file/table. Always false for
+// non-sqlite3 URIs (postgres has no local gnclock file to inspect; checking
+// its lock would need libpq, which isn't linked). A free function, not a
+// Session method, because Open() needs the answer before there is a
+// session to ask, and the check needs no session state.
+bool GncLockIsProvablyStale(const std::string& book_uri);
+
 }  // namespace daichod

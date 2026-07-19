@@ -8,6 +8,7 @@
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <thread>
@@ -52,6 +53,32 @@ struct Options {
   std::fprintf(stderr, "{\"error\":\"%s\",\"detail\":\"%s\"}\n",
                reason.c_str(), detail.c_str());
   std::exit(1);
+}
+
+// Lowercase hex, for turning a raw digest into a filesystem-safe lock name.
+std::string HexEncode(const std::string& data) {
+  static constexpr char kHexDigits[] = "0123456789abcdef";
+  std::string hex;
+  hex.reserve(data.size() * 2);
+  for (const unsigned char byte : data) {
+    hex.push_back(kHexDigits[byte >> 4]);
+    hex.push_back(kHexDigits[byte & 0x0F]);
+  }
+  return hex;
+}
+
+// Strips `user[:pass]@` from a URI's authority component so lock identity
+// depends only on which book is addressed, not which credentials connect.
+std::string StripCredentials(const std::string& uri) {
+  const auto scheme_end = uri.find("://");
+  if (scheme_end == std::string::npos) return uri;
+  const auto authority_start = scheme_end + 3;
+  const auto at_pos = uri.find('@', authority_start);
+  if (at_pos == std::string::npos) return uri;
+  const auto slash_pos = uri.find('/', authority_start);
+  // An '@' past the authority (e.g. in a path/query) isn't credentials.
+  if (slash_pos != std::string::npos && at_pos > slash_pos) return uri;
+  return uri.substr(0, authority_start) + uri.substr(at_pos + 1);
 }
 
 Options ParseOptions(int argc, char** argv) {
@@ -124,25 +151,59 @@ Options ParseOptions(int argc, char** argv) {
   return options;
 }
 
-// flock on <socket>.lock plus a pidfile. Together with the engine's own book
-// lock this makes a second instance on the same book fail loudly at startup.
-void AcquireLocks(const std::string& socket_path) {
-  const std::string lock_path = socket_path + ".lock";
+// flock(lock_path) + pidfile at pid_path. On contention, exits via Fail with
+// fail_reason (the caller's promise about what this particular lock means).
+void AcquireOneLock(const std::string& lock_path, const std::string& pid_path,
+                    const char* fail_reason) {
   const int lock_fd = open(lock_path.c_str(), O_CREAT | O_RDWR, 0644);
   if (lock_fd < 0) Fail("lock_open_failed", lock_path);
   if (flock(lock_fd, LOCK_EX | LOCK_NB) != 0) {
-    Fail("already_running", "another daichod holds " + lock_path);
+    Fail(fail_reason, "another daichod holds " + lock_path);
   }
   // lock_fd stays open (and locked) for the life of the process.
 
-  const std::string pid_path = socket_path + ".pid";
   FILE* pid_file = std::fopen(pid_path.c_str(), "w");
   if (pid_file == nullptr) Fail("pidfile_open_failed", pid_path);
   std::fprintf(pid_file, "%d\n", getpid());
   std::fclose(pid_file);
+}
 
-  // The flock proves no live owner; a leftover socket file is stale.
-  unlink(socket_path.c_str());
+// Two independent locks. The socket lock (<socket>.lock) only guards against
+// a second instance reusing the same --socket path; two daichod processes on
+// the same book with different --socket values sail past it and would both
+// reach Session::Open with live engine locks. The book-identity lock is what
+// actually makes "a second instance on the same book fails loudly" true
+// regardless of --socket — for sqlite3 books, a path next to the book file;
+// for postgres, a hashed-URI path next to the journal (journal_path is
+// always set for postgres; ParseOptions enforces it), since there's no local
+// book file to key off of. Credentials are stripped before hashing so lock
+// identity doesn't depend on which account connects.
+//
+// This lock is also what justifies Session::Open's stale-lock inference: by
+// the time Open() sees a still-locked engine, this flock has already proven
+// no other daichod is alive on the book, so what remains to rule out is only
+// whether some non-daichod writer (desktop GnuCash) holds it — see
+// GncLockIsProvablyStale in engine/session.cpp.
+void AcquireLocks(const Options& options) {
+  AcquireOneLock(options.socket_path + ".lock", options.socket_path + ".pid",
+                "already_running");
+
+  std::string book_lock_path;
+  if (!options.book_path().empty()) {
+    book_lock_path = options.book_path() + ".daichod.lock";
+  } else {
+    const std::string digest =
+        HexEncode(Sha256(StripCredentials(options.book_uri))).substr(0, 32);
+    book_lock_path = (std::filesystem::path(options.journal_path)
+                          .parent_path() /
+                      (digest + ".daichod.lock"))
+                         .string();
+  }
+  AcquireOneLock(book_lock_path, book_lock_path + ".pid", "book_already_open");
+
+  // The socket lock above proves no live owner of this socket path; a
+  // leftover socket file is stale.
+  unlink(options.socket_path.c_str());
 }
 
 int Run(const Options& options) {
@@ -159,7 +220,7 @@ int Run(const Options& options) {
   sigaddset(&signals, SIGINT);
   pthread_sigmask(SIG_BLOCK, &signals, nullptr);
 
-  AcquireLocks(options.socket_path);
+  AcquireLocks(options);
 
   // Startup order per DESIGN.md: locks → daily snapshot (files quiescent
   // before anything opens them) → sidecar journal → book → integrity

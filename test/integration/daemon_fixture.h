@@ -82,6 +82,18 @@ class DaemonFixture : public ::testing::Test {
     daemon_pid_ = -1;
   }
 
+  // Simulates a crash: no SIGTERM handling, no lock/session teardown, so
+  // whatever the engine's gnclock row and daichod's own locks looked like at
+  // the moment of the kill is exactly what a restarted daemon has to cope
+  // with.
+  void KillDaemonHard() {
+    if (daemon_pid_ <= 0) return;
+    kill(daemon_pid_, SIGKILL);
+    int status = 0;
+    waitpid(daemon_pid_, &status, 0);
+    daemon_pid_ = -1;
+  }
+
   // For crash tests: the daemon has already died on its own (a crash-point
   // abort() observed as an RPC failure) and just needs reaping, not another
   // signal. Blocks until it has exited; returns its wait status.
