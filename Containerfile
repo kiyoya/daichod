@@ -128,10 +128,17 @@ RUN cmake -S /src -B /build -G Ninja \
 
 # ---------------------------------------------------------------- runtime
 # Deliverable: daichod + daichod-mkbook + the exact engine they were built
-# against, nothing else. daichod-mkbook ships alongside the daemon because
-# book creation is a deployment act: the daemon only opens existing books,
-# so deployment tooling creates the initial book with
+# against + a working gnucash-cli, nothing else. daichod-mkbook ships
+# alongside the daemon because book creation is a deployment act: the
+# daemon only opens existing books, so deployment tooling creates the
+# initial book with
 #   <engine> run --rm --entrypoint daichod-mkbook daichod <sqlite3:///abs/path>
+# gnucash-cli report rendering is part of the deliverable — daicho's parity
+# harness renders reference reports (Trial Balance, Balance Sheet) from
+# this pinned image so the desktop reference can never version-skew from
+# the daemon. That is why a headless image carries GTK/WebKit: the report
+# machinery dlopens libgnc-html.so, which links libgtk-3.so.0 and
+# libwebkit2gtk-4.1.so.0.
 FROM ubuntu:24.04 AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -141,6 +148,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libboost-program-options1.83.0 libboost-regex1.83.0 \
       libdbi1t64 libdbd-sqlite3 \
       libsqlite3-0 \
+      libgtk-3-0t64 libwebkit2gtk-4.1-0 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=gnucash /opt/gnucash /opt/gnucash
 COPY --from=build /build/daichod /usr/local/bin/daichod

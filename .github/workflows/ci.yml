@@ -102,4 +102,17 @@ jobs:
           file: Containerfile
           target: runtime
           tags: daichod:ci
+          load: true
           cache-from: type=registry,ref=${{ env.CACHE_REF }}
+      # The golden test drives gnucash-cli inside the dev image; daicho's
+      # parity harness drives it inside the *runtime* image, which carries a
+      # different (minimal) library set — that is the configuration that
+      # broke once. Render a report there too so the deliverable stays the
+      # working reference renderer.
+      - name: Render a report in the runtime image
+        run: >
+          docker run --rm --entrypoint bash daichod:ci -c
+          'daichod-mkbook sqlite3:///tmp/book.gnucash
+          && gnucash-cli --report run --name "Trial Balance"
+          --output-file /tmp/trial-balance.html sqlite3:///tmp/book.gnucash
+          && test -s /tmp/trial-balance.html'
