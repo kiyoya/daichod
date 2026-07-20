@@ -49,7 +49,9 @@ jobs:
       contents: read
       packages: write
     env:
-      CACHE_REF: ghcr.io/${{ github.repository }}/buildcache
+      # arch-suffixed because publish.yml keeps one cache per platform; CI
+      # itself only builds amd64.
+      CACHE_REF: ghcr.io/${{ github.repository }}/buildcache-amd64
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v4
@@ -70,7 +72,11 @@ jobs:
           target: dev
           tags: daichod-dev:ci
           load: true
-          cache-from: type=registry,ref=${{ env.CACHE_REF }}
+          # The second ref seeds the arch-suffixed cache from the pre-split
+          # one; drop it once buildcache-amd64 is populated.
+          cache-from: |
+            type=registry,ref=${{ env.CACHE_REF }}
+            type=registry,ref=ghcr.io/${{ github.repository }}/buildcache
           cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref={0},mode=max', env.CACHE_REF) || '' }}
       # Compiler cache: the image sets CCACHE_DIR=/ccache; the cached host
       # directory is bind-mounted there.
