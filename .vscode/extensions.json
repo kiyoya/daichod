@@ -3,6 +3,7 @@
     "drblury.protobuf-vsc",
     "editorconfig.editorconfig",
     "github.vscode-github-actions",
+    "ms-vscode-remote.remote-containers",
     "twxs.cmake"
   ]
 }
