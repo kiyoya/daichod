@@ -21,6 +21,14 @@ their workarounds. Nothing builds on the host, ever.
 
 - Any non-trivial work happens on a descriptively named branch; commits
   land on main only with the human's identity and signature.
+- Every commit on main must be signed — no exceptions. Unsigned commits
+  are tolerable only on work branches (see below); getting them onto
+  main signed is the human's act: agents never merge PRs, never push to
+  main, and never create or push release tags (tags are annotated and
+  signed with the human's key). A GitHub squash-merge performed by the
+  human satisfies this — github.com signs the squash commit with its
+  web-flow key. Agents stop at "PR open, CI green, squash message
+  prepared in the PR body" and hand over.
 - Agent-made commits keep the human as author and add the agent's
   identity as a `Co-Authored-By` footer (platform domain, e.g.
   `noreply@anthropic.com`). Never change git config; override per
