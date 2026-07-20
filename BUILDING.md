@@ -17,6 +17,17 @@ are compiled from source inside the image (pins: `GNUCASH_VERSION`,
 The `gnucash` and `grpc` stages take ~40 and ~20 minutes cold; they are
 layer-cached and only rebuild when their pins change.
 
+The runtime image ships `daichod-mkbook` alongside the daemon: the daemon
+only opens existing books, so deployment tooling creates the initial book
+with
+
+```sh
+<engine> run --rm -v /path/to/data:/data --entrypoint daichod-mkbook daichod \
+  sqlite3:///data/book.gnucash
+```
+
+which prints the new book's root account GUID.
+
 ## Build and test
 
 Sources are bind-mounted read-mostly at `/src`; the build tree and the
@@ -75,6 +86,9 @@ directory. Known preview quirks:
   errors out of every compile (falling back to the real compiler, so
   nothing caches). This is why `/build` and `/ccache` are named
   volumes and only the sources are bind-mounted.
+- **Unix sockets cannot be bound on a bind mount** (`Error in bind ...
+  Operation not permitted`): point `--socket` at the container
+  filesystem or a named volume; only the book can live on the mount.
 - **`wslc rmi` garbage-collects shared BuildKit layers**: removing
   intermediate/old tags can silently force the 40-minute source stages
   to rebuild. Keep superseded tags until a new build has re-established
