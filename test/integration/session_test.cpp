@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <regex>
+
 #include "daemon_fixture.h"
 
 namespace daichod::testing {
@@ -25,7 +27,11 @@ TEST_F(DaemonFixture, GetBookInfoReportsVersionsAndRoot) {
   ASSERT_TRUE(stub->GetBookInfo(&context, request, &info).ok());
   EXPECT_EQ(info.root_account_guid().size(), 32u);
   EXPECT_FALSE(info.engine_version().empty());
-  EXPECT_FALSE(info.shim_version().empty());
+  // The release scheme from CONTRACT.md: Major.YYYYMMDD.Iteration. The
+  // Rust client refuses on a mismatched major, so shape is contractual.
+  EXPECT_TRUE(std::regex_match(info.shim_version(),
+                               std::regex(R"(\d+\.\d{8}\.\d+)")))
+      << "shim_version: " << info.shim_version();
   EXPECT_FALSE(info.read_only());
   // Credentials never echo; this book has none, so the URI passes through.
   EXPECT_EQ(info.backend_uri(), book_uri_);

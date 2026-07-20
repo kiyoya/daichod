@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
-project(daichod VERSION 0.1.0 LANGUAGES CXX)
+
+# The release version (CONTRACT.md tag scheme, Major.YYYYMMDD.Iteration)
+# comes from the VERSION file so it survives image builds without .git;
+# publish.yml refuses any tag that does not match it.
+file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/VERSION DAICHOD_RELEASE_VERSION LIMIT_COUNT 1)
+project(daichod VERSION ${DAICHOD_RELEASE_VERSION} LANGUAGES CXX)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS VERSION)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
