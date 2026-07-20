@@ -33,13 +33,13 @@
   "customizations": {
     "vscode": {
       // Container-only tooling: clangd needs the in-container compile_commands,
-      // CMake Tools drives the in-container build, proto3 edits the contract.
-      // Workspace-wide recommendations (editorconfig, GitHub Actions, cmake
-      // syntax) stay in .vscode/extensions.json.
+      // CMake Tools drives the in-container build, protobuf support edits the
+      // contract. Workspace-wide recommendations (editorconfig, GitHub Actions,
+      // cmake syntax) stay in .vscode/extensions.json.
       "extensions": [
         "ms-vscode.cmake-tools",
         "llvm-vs-code-extensions.vscode-clangd",
-        "zxh404.vscode-proto3"
+        "drblury.protobuf-vsc"
       ],
       "settings": {
         "cmake.buildDirectory": "/build",
