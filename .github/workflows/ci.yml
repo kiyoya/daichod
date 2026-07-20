@@ -72,11 +72,7 @@ jobs:
           target: dev
           tags: daichod-dev:ci
           load: true
-          # The second ref seeds the arch-suffixed cache from the pre-split
-          # one; drop it once buildcache-amd64 is populated.
-          cache-from: |
-            type=registry,ref=${{ env.CACHE_REF }}
-            type=registry,ref=ghcr.io/${{ github.repository }}/buildcache
+          cache-from: type=registry,ref=${{ env.CACHE_REF }}
           cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref={0},mode=max', env.CACHE_REF) || '' }}
       # Compiler cache: the image sets CCACHE_DIR=/ccache; the cached host
       # directory is bind-mounted there.
