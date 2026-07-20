@@ -96,3 +96,32 @@ directory. Known preview quirks:
 - **Quoting through PowerShell interop mangles braces/semicolons**: for
   nontrivial shell logic, write a script into the repo and run
   `bash /src/script.sh` instead of inlining.
+
+### VS Code Dev Container
+
+[`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
+wraps the same layout for "Reopen in Container": it builds the
+`Containerfile`'s `dev` target and mounts exactly as above — sources
+bind-mounted at `/src`, `/build` and `/ccache` on the named volumes —
+so the bind-mount quirks stay worked around no matter who starts the
+container.
+
+To point the Dev Containers extension at wslc, set its **Docker Path**
+setting to `wslc` — a per-user VS Code setting, deliberately not
+committed; requires the pre-release extension (0.462.0 or later).
+
+On first open, `postCreateCommand` configures the build tree (`Debug`,
+with `CMAKE_EXPORT_COMPILE_COMMANDS=ON`), so CMake Tools has a ready
+tree and clangd picks up `/build/compile_commands.json` immediately.
+
+The container name is pinned to `daichod-devcontainer`, so a host-side
+agent can run commands in the running dev container deterministically:
+
+```sh
+wslc exec daichod-devcontainer cmake --build /build
+```
+
+Starting a stopped one with `wslc start` from the host also works, but
+bypasses VS Code's orchestration (`postCreateCommand`, port
+forwarding) — fine for build/test exec, not a substitute for opening
+it in VS Code.

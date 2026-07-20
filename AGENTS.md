@@ -2,7 +2,11 @@
 
 Read [BUILDING.md](BUILDING.md) first: container-only builds, canonical
 build/test commands, test-suite map, and the wslc preview quirks and
-their workarounds. Nothing builds on the host, ever.
+their workarounds. Nothing builds on the host, ever. If the human's
+VS Code dev container is running, `wslc exec daichod-devcontainer <cmd>`
+runs commands against its ready-configured `/build` tree (see the
+Dev Container section of BUILDING.md) instead of spinning up a fresh
+`daichod-dev` container.
 
 ## Conventions
 

@@ -1,0 +1,55 @@
+// VS Code Dev Container for daichod. Reuses the Containerfile's `dev` stage
+// (the canonical build/test environment) so "Reopen in Container" lands in the
+// exact toolchain CI and the manual wslc flow use — no duplicated build logic.
+//
+// Engine: wslc. Set the Dev Containers extension's "Docker Path" setting to
+// `wslc` (per-user VS Code setting, not committed here). See BUILDING.md.
+//
+// Layout mirrors BUILDING.md: sources bind-mounted at /src (the dev stage's
+// WORKDIR), while /build and /ccache live on named volumes — the wslc preview's
+// bind-mount layer breaks getcwd()/file locks for a build tree or ccache dir on
+// the mount (getcwd noise, ctest discovering nothing, ccache silently failing).
+{
+  "name": "daichod-dev",
+  "build": {
+    "dockerfile": "../Containerfile",
+    "context": "..",
+    "target": "dev"
+  },
+  // /src is the dev stage's WORKDIR; bind only the sources there.
+  "workspaceFolder": "/src",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/src,type=bind",
+  // Stable name so a host-side agent can target the running container
+  // deterministically: `wslc exec daichod-devcontainer <cmd>`.
+  "runArgs": ["--name", "daichod-devcontainer"],
+  // Build tree and compiler cache on named volumes, never on the bind mount.
+  "mounts": [
+    "source=daichod-build,target=/build,type=volume",
+    "source=daichod-ccache,target=/ccache,type=volume"
+  ],
+  // Configure the build tree once on first open so clangd has a
+  // compile_commands.json and CMake Tools has a ready tree. Debug matches
+  // BUILDING.md's local example; reconfiguring an existing tree is idempotent.
+  "postCreateCommand": "cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+  "customizations": {
+    "vscode": {
+      // Container-only tooling: clangd needs the in-container compile_commands,
+      // CMake Tools drives the in-container build, proto3 edits the contract.
+      // Workspace-wide recommendations (editorconfig, GitHub Actions, cmake
+      // syntax) stay in .vscode/extensions.json.
+      "extensions": [
+        "ms-vscode.cmake-tools",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "zxh404.vscode-proto3"
+      ],
+      "settings": {
+        "cmake.buildDirectory": "/build",
+        "cmake.configureOnOpen": false,
+        // compile_commands.json lives on the /build volume, not in the repo.
+        "clangd.arguments": ["--compile-commands-dir=/build"],
+        // clangd is the indexer; disable cpptools' to avoid a double indexer.
+        "C_Cpp.intelliSenseEngine": "disabled"
+      }
+    }
+  }
+}
