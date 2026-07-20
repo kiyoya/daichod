@@ -1,8 +1,8 @@
 {
   "recommendations": [
+    "drblury.protobuf-vsc",
     "editorconfig.editorconfig",
     "github.vscode-github-actions",
-    "twxs.cmake",
-    "zxh404.vscode-proto3"
+    "twxs.cmake"
   ]
 }
