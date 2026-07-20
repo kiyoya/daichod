@@ -19,7 +19,23 @@ on:
     tags: ["[0-9]*.[0-9]*.[0-9]*"]
 
 jobs:
+  # The VERSION file is what the binary reports as shim_version (the image
+  # build has no .git to derive it from), so a tag that disagrees with it
+  # would ship a self-misidentifying daemon. Refuse before building.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tag must match VERSION
+        run: |
+          v="$(cat VERSION)"
+          if [ "$v" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match VERSION $v; retag after bumping VERSION"
+            exit 1
+          fi
+
   build:
+    needs: verify
     strategy:
       matrix:
         include:
