@@ -13,6 +13,6 @@ A small C++ daemon that links libgnucash and serves a gRPC contract over a Unix 
 
 **Code style:** C++ follows the [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html); protocol buffers follow the [Protobuf Style Guide](https://protobuf.dev/programming-guides/style/).
 
-**Building and testing:** container-only, engine-agnostic (wslc, docker, or podman). See [BUILDING.md](BUILDING.md); coding agents should also read [AGENTS.md](AGENTS.md). A [VS Code Dev Container](.devcontainer/devcontainer.json) wrapping the same `dev` image is included.
+**Building and testing:** container-only, engine-agnostic (docker, podman, or any other OCI-compatible engine). See [BUILDING.md](BUILDING.md); coding agents should also read [AGENTS.md](AGENTS.md). A [VS Code Dev Container](.devcontainer/devcontainer.json) wrapping the same `dev` image is included.
 
 **License:** GPL-3.0-or-later ([LICENSE](LICENSE)), matching the linked libgnucash. `proto/` is Apache-2.0 so clients can generate stubs without inheriting the GPL.

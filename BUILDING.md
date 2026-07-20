@@ -1,7 +1,7 @@
 # Building and testing daichod
 
 Everything here is engine-agnostic: the same `Containerfile` works with
-wslc, docker, or podman. There is no host toolchain and none should be
+any OCI-compatible engine (docker, podman, …). There is no host toolchain and none should be
 installed — no distro ships libgnucash headers, and the contract's
 protobuf edition 2024 is newer than any distro gRPC/protobuf. Both stacks
 are compiled from source inside the image (pins: `GNUCASH_VERSION`,
@@ -32,7 +32,7 @@ which prints the new book's root account GUID.
 
 Sources are bind-mounted read-mostly at `/src`; the build tree and the
 compiler cache live on named volumes (`/build`, `/ccache`) — do not move
-them onto the bind mount (see wslc notes below for why).
+them onto the bind mount (see the bind-mount limitations below for why).
 
 ```sh
 <engine> volume create daichod-build daichod-ccache   # once
@@ -73,29 +73,22 @@ them onto the bind mount (see wslc notes below for why).
 | `daichod_golden_tests` | the pinned `gnucash-cli` opens shim-written books and agrees |
 | `daichod_property_tests` | seeded random balanced transactions hold invariants |
 
-## wslc-specific notes (WSL Containers preview)
+## Bind-mount limitations
 
-`wslc` runs only from Windows; from a WSL shell invoke it through
-interop: `powershell.exe -NoProfile -Command "wslc ..."` from the repo
-directory. Known preview quirks:
+Bind-mount fidelity varies by engine and host OS: on several engines
+the mount leaves POSIX gaps, which is why the layout above bind-mounts
+sources only. Symptoms seen in practice:
 
-- **Bind mounts break `getcwd()` and file locks** for processes spawned
-  inside freshly-created directories. Consequences when a build tree
-  lives on the mount: `sh: 0: getcwd() failed` noise from every ninja
-  step, ctest's recursive test discovery finds nothing, and ccache
-  errors out of every compile (falling back to the real compiler, so
-  nothing caches). This is why `/build` and `/ccache` are named
-  volumes and only the sources are bind-mounted.
-- **Unix sockets cannot be bound on a bind mount** (`Error in bind ...
+- **A build tree or compiler cache on the mount misbehaves.** On
+  affected engines, processes spawned inside freshly-created
+  directories lose `getcwd()` and file locks: `sh: 0: getcwd() failed`
+  noise from every ninja step, ctest's recursive test discovery finds
+  nothing, and ccache errors out of every compile (falling back to the
+  real compiler, so nothing caches). Named volumes (`/build`,
+  `/ccache`) have none of these problems — and are faster everywhere.
+- **Unix sockets may not bind on a bind mount** (`Error in bind ...
   Operation not permitted`): point `--socket` at the container
   filesystem or a named volume; only the book can live on the mount.
-- **`wslc rmi` garbage-collects shared BuildKit layers**: removing
-  intermediate/old tags can silently force the 40-minute source stages
-  to rebuild. Keep superseded tags until a new build has re-established
-  the cache.
-- **Quoting through PowerShell interop mangles braces/semicolons**: for
-  nontrivial shell logic, write a script into the repo and run
-  `bash /src/script.sh` instead of inlining.
 
 ### VS Code Dev Container
 
@@ -103,25 +96,26 @@ directory. Known preview quirks:
 wraps the same layout for "Reopen in Container": it builds the
 `Containerfile`'s `dev` target and mounts exactly as above — sources
 bind-mounted at `/src`, `/build` and `/ccache` on the named volumes —
-so the bind-mount quirks stay worked around no matter who starts the
-container.
+so the bind-mount limitations stay worked around no matter who starts
+the container.
 
-To point the Dev Containers extension at wslc, set its **Docker Path**
-setting to `wslc` — a per-user VS Code setting, deliberately not
-committed; requires the pre-release extension (0.462.0 or later).
+The Dev Containers extension drives whatever engine its **Docker
+Path** setting points at — a per-user VS Code setting, deliberately
+not committed, so each contributor picks their own engine.
 
 On first open, `postCreateCommand` configures the build tree (`Debug`,
 with `CMAKE_EXPORT_COMPILE_COMMANDS=ON`), so CMake Tools has a ready
 tree and clangd picks up `/build/compile_commands.json` immediately.
 
-The container name is pinned to `daichod-devcontainer`, so a host-side
-agent can run commands in the running dev container deterministically:
+The container name is pinned to `daichod-devcontainer`, so host-side
+tooling can run commands in the running dev container
+deterministically:
 
 ```sh
-wslc exec daichod-devcontainer cmake --build /build
+<engine> exec daichod-devcontainer cmake --build /build
 ```
 
-Starting a stopped one with `wslc start` from the host also works, but
-bypasses VS Code's orchestration (`postCreateCommand`, port
+Starting a stopped one with `<engine> start` from the host also works,
+but bypasses VS Code's orchestration (`postCreateCommand`, port
 forwarding) — fine for build/test exec, not a substitute for opening
 it in VS Code.

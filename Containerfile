@@ -1,5 +1,5 @@
 # daichod build images. Engine-agnostic OCI file (standard Dockerfile syntax);
-# build with wslc/docker/podman interchangeably:
+# build with any OCI-compatible engine interchangeably:
 #
 #   <engine> build --target dev     -t daichod-dev .
 #   <engine> build --target runtime -t daichod .
@@ -102,9 +102,9 @@ COPY --from=gnucash /opt/gnucash /opt/gnucash
 # environment file, so the load paths are set here.
 # ccache lives at a neutral mount point: locally mount a named volume
 # (-v daichod-ccache:/ccache), in CI bind-mount the actions-cached host
-# directory (-v "$PWD/.ccache:/ccache"). It must NOT live on a wslc
-# bind mount — the preview's mount layer cannot back ccache's file locks,
-# which makes every store silently fail.
+# directory (-v "$PWD/.ccache:/ccache"). It must NOT live on a bind
+# mount on engines whose mount layer cannot back ccache's file locks,
+# which makes every store silently fail (see BUILDING.md).
 ENV PATH=/opt/grpc/bin:/opt/gnucash/bin:$PATH \
     CMAKE_PREFIX_PATH=/opt/grpc \
     CCACHE_DIR=/ccache \

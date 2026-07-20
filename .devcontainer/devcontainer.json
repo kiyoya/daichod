@@ -1,14 +1,13 @@
 // VS Code Dev Container for daichod. Reuses the Containerfile's `dev` stage
 // (the canonical build/test environment) so "Reopen in Container" lands in the
-// exact toolchain CI and the manual wslc flow use — no duplicated build logic.
-//
-// Engine: wslc. Set the Dev Containers extension's "Docker Path" setting to
-// `wslc` (per-user VS Code setting, not committed here). See BUILDING.md.
+// exact toolchain CI and the manual container flow use — no duplicated build
+// logic. Engine-agnostic: the Dev Containers extension drives whatever engine
+// its "Docker Path" setting points at (a per-user setting, not committed).
 //
 // Layout mirrors BUILDING.md: sources bind-mounted at /src (the dev stage's
-// WORKDIR), while /build and /ccache live on named volumes — the wslc preview's
-// bind-mount layer breaks getcwd()/file locks for a build tree or ccache dir on
-// the mount (getcwd noise, ctest discovering nothing, ccache silently failing).
+// WORKDIR), while /build and /ccache live on named volumes — on several
+// engines a bind mount cannot reliably back a build tree or compiler cache
+// (POSIX gaps and slow I/O; see the bind-mount notes in BUILDING.md).
 {
   "name": "daichod-dev",
   "build": {
@@ -19,8 +18,8 @@
   // /src is the dev stage's WORKDIR; bind only the sources there.
   "workspaceFolder": "/src",
   "workspaceMount": "source=${localWorkspaceFolder},target=/src,type=bind",
-  // Stable name so a host-side agent can target the running container
-  // deterministically: `wslc exec daichod-devcontainer <cmd>`.
+  // Stable name so host-side tooling can target the running container
+  // deterministically: `<engine> exec daichod-devcontainer <cmd>`.
   "runArgs": ["--name", "daichod-devcontainer"],
   // Build tree and compiler cache on named volumes, never on the bind mount.
   "mounts": [
