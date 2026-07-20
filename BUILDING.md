@@ -86,6 +86,9 @@ directory. Known preview quirks:
   errors out of every compile (falling back to the real compiler, so
   nothing caches). This is why `/build` and `/ccache` are named
   volumes and only the sources are bind-mounted.
+- **Unix sockets cannot be bound on a bind mount** (`Error in bind ...
+  Operation not permitted`): point `--socket` at the container
+  filesystem or a named volume; only the book can live on the mount.
 - **`wslc rmi` garbage-collects shared BuildKit layers**: removing
   intermediate/old tags can silently force the 40-minute source stages
   to rebuild. Keep superseded tags until a new build has re-established
