@@ -1,7 +1,9 @@
 // Creates an empty SQL-backed GnuCash book at the given URI and prints the
-// root account GUID. Test infrastructure: gnucash-cli cannot create books,
-// and the shim itself refuses to (creation is a deployment act, not
-// mechanical engine access on an existing book).
+// root account GUID. Serves both test infrastructure and deployment-time
+// book creation (it ships in the runtime image next to the daemon):
+// gnucash-cli cannot create books, and the shim itself refuses to
+// (creation is a deployment act, not mechanical engine access on an
+// existing book).
 
 #include <cstdio>
 #include <string>

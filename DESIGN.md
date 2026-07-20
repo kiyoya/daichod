@@ -33,7 +33,7 @@ Startup: acquire locks → open sidecar journal → open book → run engine scr
 
 ## Build and compatibility
 
-CMake, linking the distribution's libgnucash development packages pinned to an exact GnuCash version compiled into the binary and served via `GetBookInfo`. The supported deployment is a container image whose base carries the matching GnuCash build, so shim and engine cannot skew. GnuCash upgrades are deliberate events: bump the pin, rebuild, rerun the full compatibility suite.
+CMake, linking the distribution's libgnucash development packages pinned to an exact GnuCash version compiled into the binary and served via `GetBookInfo`. The supported deployment is a container image whose base carries the matching GnuCash build, so shim and engine cannot skew. Book creation ships as a separate binary in the same image (`daichod-mkbook`) — the daemon itself only opens existing books and never creates one. GnuCash upgrades are deliberate events: bump the pin, rebuild, rerun the full compatibility suite.
 
 ## Test posture — the heart of the correctness story
 
@@ -50,6 +50,7 @@ daichod/
   src/engine/map.{h,cpp}    # proto <-> engine mapping, GUID handling
   src/journal/              # sidecar: intent journal + applied mutations
   test/golden/              # round-trip books + gnucash-cli harness
+  tools/mkbook/             # empty-book creation: tests + deployment
 ```
 
 Depends on a tagged `daicho-proto` release for generated stubs.

@@ -127,7 +127,11 @@ RUN cmake -S /src -B /build -G Ninja \
     && cmake --build /build
 
 # ---------------------------------------------------------------- runtime
-# Deliverable: daichod + the exact engine it was built against, nothing else.
+# Deliverable: daichod + daichod-mkbook + the exact engine they were built
+# against, nothing else. daichod-mkbook ships alongside the daemon because
+# book creation is a deployment act: the daemon only opens existing books,
+# so deployment tooling creates the initial book with
+#   <engine> run --rm --entrypoint daichod-mkbook daichod <sqlite3:///abs/path>
 FROM ubuntu:24.04 AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -140,6 +144,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=gnucash /opt/gnucash /opt/gnucash
 COPY --from=build /build/daichod /usr/local/bin/daichod
+COPY --from=build /build/daichod-mkbook /usr/local/bin/daichod-mkbook
 ENV PATH=/opt/gnucash/bin:$PATH \
     LD_LIBRARY_PATH=/opt/gnucash/lib:/opt/gnucash/lib/gnucash \
     GUILE_LOAD_PATH=/opt/gnucash/share/guile/site/3.0 \
